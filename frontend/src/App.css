@@ -1,42 +1,167 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+.page-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3rem;
+  padding: 2rem 1.5rem 3rem;
+  color: #f5f5f5;
+}
+
+.divider {
+  width: 100%;
+  max-width: 900px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.pong-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  color: #f5f5f5;
+}
+
+.pong-title {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 2.4rem;
+}
+
+.pong-scores {
+  display: flex;
+  gap: 2.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.pong-field {
+  position: relative;
+  background: radial-gradient(circle at center, #1f2937 0, #020617 70%);
+  border-radius: 10px;
+  border: 2px solid rgba(248, 250, 252, 0.5);
+  overflow: hidden;
+  box-shadow:
+    0 0 30px rgba(8, 47, 73, 0.6),
+    inset 0 0 40px rgba(15, 23, 42, 0.9);
+}
+
+.pong-paddle {
+  position: absolute;
+  background: linear-gradient(to bottom, #e5e7eb, #9ca3af);
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(148, 163, 184, 0.8);
+}
+
+.pong-paddle-left {
+  left: 30px;
+}
+
+.pong-paddle-right {
+  right: 30px;
+}
+
+.pong-ball {
+  position: absolute;
+  background: #facc15;
+  border-radius: 999px;
+  box-shadow:
+    0 0 12px rgba(250, 204, 21, 0.9),
+    0 0 30px rgba(250, 204, 21, 0.7);
+}
+
+.pong-center-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  border-left: 2px dashed rgba(248, 250, 252, 0.5);
+  transform: translateX(-50%);
+}
+
+.pong-controls {
+  display: flex;
+  gap: 2rem;
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  color: #e5e7eb;
+  opacity: 0.9;
+}
+
+.snake-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.snake-title {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.snake-info {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.95rem;
+  color: #e5e7eb;
+  opacity: 0.9;
+}
+
+.snake-board {
+  position: relative;
+  background: radial-gradient(circle at center, #0f172a 0, #020617 70%);
+  border-radius: 8px;
+  border: 2px solid rgba(148, 163, 184, 0.8);
+  box-shadow:
+    0 0 25px rgba(15, 23, 42, 0.8),
+    inset 0 0 30px rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+}
+
+.snake-cell {
+  position: absolute;
+  background: linear-gradient(135deg, #22c55e, #15803d);
+  border-radius: 4px;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
+}
+
+.snake-head {
+  background: linear-gradient(135deg, #4ade80, #16a34a);
+}
+
+.snake-food {
+  position: absolute;
+  background: #f97316;
+  border-radius: 4px;
+  box-shadow:
+    0 0 10px rgba(249, 115, 22, 0.9),
+    0 0 25px rgba(249, 115, 22, 0.7);
+}
+
+.snake-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.snake-overlay-card {
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 10px;
+  padding: 1.25rem 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   text-align: center;
+  font-size: 0.95rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
+.snake-overlay-hint {
+  font-size: 0.85rem;
+  color: #cbd5f5;
+  opacity: 0.9;
 }
