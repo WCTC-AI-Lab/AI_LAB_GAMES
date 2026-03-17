@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2-Player Pong</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+kaplay({
+  width: 800,
+  height: 500,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+const W = 800;
+const H = 500;
+const PADDLE_W = 12;
+const PADDLE_H = 80;
+const BALL_R = 7;
+const PADDLE_SPEED = 400;
+const BASE_SPEED = 200;
+const SPEED_GROWTH = 0.2;
+const PADDLE_INSET = 30;
+
+scene("game", () => {
+  let scoreLeft = 0;
+  let scoreRight = 0;
+  let roundTime = 0;
+  let volleys = 0;
+  let secondBallSpawned = false;
+  const balls = [];
+
+  const leftPaddle = add([
+    rect(PADDLE_W, PADDLE_H),
+    pos(PADDLE_INSET, H / 2 - PADDLE_H / 2),
+    color(220, 225, 235),
+    anchor("topleft"),
+  ]);
+
+  const rightPaddle = add([
+    rect(PADDLE_W, PADDLE_H),
+    pos(W - PADDLE_INSET - PADDLE_W, H / 2 - PADDLE_H / 2),
+    color(220, 225, 235),
+    anchor("topleft"),
+  ]);
+
+  const scoreLabel = add([
+    text("0 — 0", { size: 32 }),
+    pos(W / 2, 30),
+    color(245, 245, 245),
+    anchor("center"),
+  ]);
+
+  const volleyLabel = add([
+    text("Volleys: 0", { size: 14 }),
+    pos(W / 2, 55),
+    color(200, 200, 210),
+    anchor("center"),
+    opacity(0.8),
+  ]);
+
+  add([
+    text("P1: W / S          P2: ↑ / ↓", { size: 12 }),
+    pos(W / 2, H - 18),
+    color(200, 200, 210),
+    anchor("center"),
+    opacity(0.6),
+  ]);
+
+  function addBall(x, y, dx, dy) {
+    const obj = add([
+      circle(BALL_R),
+      pos(x, y),
+      color(250, 204, 21),
+      anchor("center"),
+      "ball",
+    ]);
+    balls.push({ obj, dirX: dx, dirY: dy });
+  }
+
+  function resetBall(direction) {
+    roundTime = 0;
+    volleys = 0;
+    secondBallSpawned = false;
+    for (const b of balls) destroy(b.obj);
+    balls.length = 0;
+    const offset = Math.random() * 0.6 - 0.3;
+    const len = Math.hypot(1, offset) || 1;
+    const dirX = (direction * 1) / len;
+    const dirY = offset / len;
+    addBall(W / 2, H / 2, dirX, dirY);
+  }
+
+  resetBall(1);
+
+  onUpdate(() => {
+    const d = dt();
+    roundTime += d;
+    const speed = BASE_SPEED * (1 + SPEED_GROWTH * Math.log(1 + roundTime));
+
+    // Paddle movement
+    if (isKeyDown("w")) leftPaddle.pos.y -= PADDLE_SPEED * d;
+    if (isKeyDown("s")) leftPaddle.pos.y += PADDLE_SPEED * d;
+    leftPaddle.pos.y = Math.min(Math.max(leftPaddle.pos.y, 0), H - PADDLE_H);
+
+    if (isKeyDown("up")) rightPaddle.pos.y -= PADDLE_SPEED * d;
+    if (isKeyDown("down")) rightPaddle.pos.y += PADDLE_SPEED * d;
+    rightPaddle.pos.y = Math.min(Math.max(rightPaddle.pos.y, 0), H - PADDLE_H);
+
+    volleyLabel.text = "Volleys: " + volleys;
+
+    const lx = leftPaddle.pos.x;
+    const ly = leftPaddle.pos.y;
+    const rx = rightPaddle.pos.x;
+    const ry = rightPaddle.pos.y;
+    const toRemove = [];
+    let lastServeDir = 1;
+
+    for (let i = 0; i < balls.length; i++) {
+      const b = balls[i];
+      let dirX = b.dirX;
+      let dirY = b.dirY;
+      const ball = b.obj;
+
+      ball.pos.x += dirX * speed * d;
+      ball.pos.y += dirY * speed * d;
+
+      if (ball.pos.y - BALL_R <= 0) {
+        ball.pos.y = BALL_R;
+        dirY = Math.abs(dirY);
+      } else if (ball.pos.y + BALL_R >= H) {
+        ball.pos.y = H - BALL_R;
+        dirY = -Math.abs(dirY);
+      }
+
+      if (
+        ball.pos.x - BALL_R <= lx + PADDLE_W &&
+        ball.pos.x - BALL_R >= lx &&
+        ball.pos.y + BALL_R >= ly &&
+        ball.pos.y - BALL_R <= ly + PADDLE_H &&
+        dirX < 0
+      ) {
+        ball.pos.x = lx + PADDLE_W + BALL_R;
+        dirX = Math.abs(dirX);
+        dirY = ((ball.pos.y - (ly + PADDLE_H / 2)) / (PADDLE_H / 2)) * 1.1;
+        volleys++;
+        if (volleys === 10 && !secondBallSpawned) {
+          secondBallSpawned = true;
+          addBall(W - ball.pos.x, ball.pos.y, -dirX, -dirY);
+        }
+      }
+
+      if (
+        ball.pos.x + BALL_R >= rx &&
+        ball.pos.x + BALL_R <= rx + PADDLE_W &&
+        ball.pos.y + BALL_R >= ry &&
+        ball.pos.y - BALL_R <= ry + PADDLE_H &&
+        dirX > 0
+      ) {
+        ball.pos.x = rx - BALL_R;
+        dirX = -Math.abs(dirX);
+        dirY = ((ball.pos.y - (ry + PADDLE_H / 2)) / (PADDLE_H / 2)) * 1.1;
+        volleys++;
+        if (volleys === 10 && !secondBallSpawned) {
+          secondBallSpawned = true;
+          addBall(W - ball.pos.x, ball.pos.y, -dirX, -dirY);
+        }
+      }
+
+      const len = Math.hypot(dirX, dirY) || 1;
+      b.dirX = dirX / len;
+      b.dirY = dirY / len;
+
+      if (ball.pos.x + BALL_R < 0) {
+        scoreRight++;
+        scoreLabel.text = scoreLeft + " — " + scoreRight;
+        lastServeDir = 1;
+        toRemove.push(i);
+      } else if (ball.pos.x - BALL_R > W) {
+        scoreLeft++;
+        scoreLabel.text = scoreLeft + " — " + scoreRight;
+        lastServeDir = -1;
+        toRemove.push(i);
+      }
+    }
+
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      destroy(balls[toRemove[i]].obj);
+      balls.splice(toRemove[i], 1);
+    }
+
+    if (balls.length === 0) resetBall(lastServeDir);
+  });
+
+  onDraw(() => {
+    for (let y = 0; y < H; y += 18) {
+      drawRect({
+        pos: vec2(W / 2 - 1, y),
+        width: 2,
+        height: 8,
+        color: rgb(248, 250, 252),
+        opacity: 0.4,
+      });
+    }
+  });
+});
+
+go("game");
+</script>
+</body>
+</html>

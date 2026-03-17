@@ -1,0 +1,47 @@
+---
+description: Technical constraints for all games built in this project
+globs: frontend/public/games/**/*.html
+alwaysApply: false
+---
+
+# Game Technical Constraints
+
+## Engine: Kaplay
+
+All games use **Kaplay** (the maintained fork of Kaboom.js). It is bundled locally — no CDN needed.
+
+```html
+<script src="../_lib/kaplay.js"></script>
+<script>
+kaplay({ width: 800, height: 500, background: [2, 6, 23], crisp: true });
+</script>
+```
+
+- `kaplay()` auto-creates and appends a `<canvas>` to `<body>`.
+- All Kaplay functions (`add`, `onUpdate`, `onKeyPress`, `dt`, `vec2`, `rgb`, `go`, `scene`, etc.) are global after init.
+- Do NOT use npm packages, do NOT use ES module imports. One `<script>` tag is all you need.
+- Kaplay docs: https://kaplayjs.com/docs/api
+
+## Viewport
+
+- The game world must fit entirely within one fixed-size canvas.
+- No scrolling cameras, no infinite maps, no multi-screen levels.
+- Typical sizes: 800x500 (landscape) or 440x440 (square). Pick what fits the game.
+
+## Sprites & assets
+
+- Use Kaplay's built-in primitives: `rect()`, `circle()`, `text()` for shapes and labels.
+- Use Unicode emojis for quick sprites: `text("🚀", { size: 32 })`.
+- Do NOT load external image URLs (CORS and broken-link risk).
+
+## Controls
+
+- Default to **WASD + Arrow keys** for movement via `onKeyDown()` / `onKeyPress()`.
+- Always include a restart mechanism (Space or Enter after game over, using `go("game")` to restart the scene).
+
+## Game structure
+
+- Every game must have: a score counter, a win/lose condition, and a restart path.
+- Use `scene("game", () => { ... })` and `go("game")` for clean restarts.
+- Use `onUpdate(() => { ... })` for game logic and `onDraw(() => { ... })` for custom rendering.
+- Use `dt()` for frame-rate-independent movement.
