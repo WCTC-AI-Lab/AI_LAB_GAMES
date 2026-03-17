@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Snake</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+kaplay({
+  width: 440,
+  height: 440,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+const GRID = 20;
+const CELL = 22;
+const TICK = 0.12;
+
+scene("game", () => {
+  let snake = [
+    { x: 8, y: 10 },
+    { x: 7, y: 10 },
+    { x: 6, y: 10 },
+  ];
+  let dir = { x: 1, y: 0 };
+  let pendingDir = null;
+  let food = { x: 12, y: 10 };
+  let score = 0;
+  let dead = false;
+  let timer = 0;
+
+  const scoreLabel = add([
+    text("Score: 0", { size: 16 }),
+    pos(8, 8),
+    color(200, 200, 210),
+    opacity(0.85),
+    z(10),
+  ]);
+
+  add([
+    text("Arrows / WASD", { size: 12 }),
+    pos(GRID * CELL - 8, 8),
+    anchor("topright"),
+    color(200, 200, 210),
+    opacity(0.5),
+    z(10),
+  ]);
+
+  function randomFood() {
+    for (let i = 0; i < 200; i++) {
+      const c = {
+        x: Math.floor(Math.random() * GRID),
+        y: Math.floor(Math.random() * GRID),
+      };
+      if (!snake.some(function (s) { return s.x === c.x && s.y === c.y; })) return c;
+    }
+    return { x: 0, y: 0 };
+  }
+
+  function setDir(x, y) {
+    if (dir.x + x === 0 && dir.y + y === 0) return;
+    pendingDir = { x: x, y: y };
+  }
+
+  onKeyPress("up",    () => setDir(0, -1));
+  onKeyPress("down",  () => setDir(0,  1));
+  onKeyPress("left",  () => setDir(-1, 0));
+  onKeyPress("right", () => setDir(1,  0));
+  onKeyPress("w",     () => setDir(0, -1));
+  onKeyPress("s",     () => setDir(0,  1));
+  onKeyPress("a",     () => setDir(-1, 0));
+  onKeyPress("d",     () => setDir(1,  0));
+
+  onUpdate(() => {
+    if (dead) return;
+
+    timer += dt();
+    if (timer < TICK) return;
+    timer -= TICK;
+
+    if (pendingDir) { dir = pendingDir; pendingDir = null; }
+
+    const head = snake[0];
+    const nx = head.x + dir.x;
+    const ny = head.y + dir.y;
+
+    if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) {
+      dead = true;
+      return;
+    }
+
+    if (snake.some(function (s) { return s.x === nx && s.y === ny; })) {
+      dead = true;
+      return;
+    }
+
+    snake.unshift({ x: nx, y: ny });
+
+    if (nx === food.x && ny === food.y) {
+      score++;
+      scoreLabel.text = "Score: " + score;
+      food = randomFood();
+    } else {
+      snake.pop();
+    }
+  });
+
+  onDraw(() => {
+    // Snake body (back to front so head renders on top)
+    for (let i = snake.length - 1; i >= 0; i--) {
+      const s = snake[i];
+      drawRect({
+        pos: vec2(s.x * CELL + 1, s.y * CELL + 1),
+        width: CELL - 2,
+        height: CELL - 2,
+        radius: 4,
+        color: i === 0 ? rgb(74, 222, 128) : rgb(34, 197, 94),
+      });
+    }
+
+    // Food
+    drawRect({
+      pos: vec2(food.x * CELL + 1, food.y * CELL + 1),
+      width: CELL - 2,
+      height: CELL - 2,
+      radius: 4,
+      color: rgb(249, 115, 22),
+    });
+
+    // Game-over overlay
+    if (dead) {
+      const cx = GRID * CELL / 2;
+      const cy = GRID * CELL / 2;
+
+      drawRect({ pos: vec2(0, 0), width: GRID * CELL, height: GRID * CELL, color: rgb(15, 23, 42), opacity: 0.7 });
+
+      drawRect({
+        pos: vec2(cx - 105, cy - 55),
+        width: 210,
+        height: 110,
+        radius: 10,
+        color: rgb(15, 23, 42),
+        opacity: 0.95,
+        outline: { width: 1, color: rgb(148, 163, 184) },
+      });
+
+      drawText({ text: "Game Over", size: 22, pos: vec2(cx, cy - 25), anchor: "center", color: rgb(245, 245, 245) });
+      drawText({ text: "Final score: " + score, size: 16, pos: vec2(cx, cy + 5), anchor: "center", color: rgb(220, 220, 230) });
+      drawText({ text: "Press Space or Enter", size: 12, pos: vec2(cx, cy + 32), anchor: "center", color: rgb(203, 213, 245), opacity: 0.9 });
+    }
+  });
+
+  onKeyPress("space", () => { if (dead) go("game"); });
+  onKeyPress("enter", () => { if (dead) go("game"); });
+});
+
+go("game");
+</script>
+</body>
+</html>

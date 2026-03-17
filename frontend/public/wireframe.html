@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Lab Arcade — Wireframe</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #f0f0f0;
+    color: #333;
+    padding: 40px;
+  }
+  h1.page-label {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #999;
+    margin-bottom: 12px;
+  }
+  .screens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 48px;
+    align-items: flex-start;
+  }
+  .screen {
+    background: #fff;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    width: 440px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  .screen-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  /* Shared nav */
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #fafafa;
+  }
+  .nav-logo {
+    font-weight: 700;
+    font-size: 15px;
+    color: #222;
+  }
+  .nav-links {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: #666;
+  }
+  .nav-links span { cursor: default; }
+  .nav-links .active { color: #222; font-weight: 600; border-bottom: 2px solid #222; padding-bottom: 2px; }
+
+  /* Placeholder box */
+  .placeholder {
+    background: #e8e8e8;
+    border: 1px dashed #bbb;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #888;
+    font-size: 13px;
+    text-align: center;
+    padding: 8px;
+  }
+
+  .btn-placeholder {
+    background: #333;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: default;
+  }
+
+  /* Home */
+  .home-content { padding: 32px 24px; text-align: center; }
+  .home-hero-title { font-size: 28px; font-weight: 800; color: #111; margin-bottom: 8px; }
+  .home-hero-sub { font-size: 15px; color: #666; margin-bottom: 28px; }
+  .home-featured {
+    margin: 0 auto 24px;
+    width: 320px;
+    height: 180px;
+  }
+  .home-featured-label { font-size: 12px; color: #999; margin-top: 8px; margin-bottom: 20px; }
+
+  /* Games */
+  .games-layout { display: flex; min-height: 380px; }
+  .games-sidebar {
+    width: 140px;
+    border-right: 1px solid #e0e0e0;
+    padding: 16px 12px;
+    background: #fafafa;
+  }
+  .sidebar-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 12px; font-weight: 600; }
+  .sidebar-item {
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 4px;
+    cursor: default;
+  }
+  .sidebar-item.active { background: #e8e8e8; color: #222; font-weight: 600; }
+  .games-main { flex: 1; padding: 20px; }
+  .games-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .game-card {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .game-card-thumb {
+    height: 80px;
+    background: #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #999;
+  }
+  .game-card-info { padding: 10px; }
+  .game-card-title { font-size: 13px; font-weight: 700; color: #222; margin-bottom: 3px; }
+  .game-card-desc { font-size: 11px; color: #888; margin-bottom: 6px; }
+  .game-card-meta { font-size: 10px; color: #aaa; }
+
+  /* Play */
+  .play-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #fafafa;
+  }
+  .play-back { font-size: 13px; color: #666; cursor: default; }
+  .play-title { font-size: 15px; font-weight: 700; color: #222; }
+  .play-iframe-area {
+    height: 300px;
+    margin: 16px;
+    background: #1a1a2e;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #556;
+    font-size: 14px;
+  }
+  .play-controls { text-align: center; padding: 8px 20px 16px; font-size: 12px; color: #999; }
+
+  /* About */
+  .about-content { padding: 28px 24px; }
+  .about-section { margin-bottom: 24px; }
+  .about-section h3 { font-size: 15px; font-weight: 700; color: #222; margin-bottom: 8px; }
+  .about-section p { font-size: 13px; color: #666; line-height: 1.5; }
+  .about-steps {
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .about-step {
+    flex: 1;
+    padding: 12px;
+    border-radius: 6px;
+    text-align: center;
+  }
+  .about-step-num { font-size: 20px; font-weight: 800; color: #333; margin-bottom: 4px; }
+  .about-step-text { font-size: 11px; color: #777; }
+</style>
+</head>
+<body>
+
+<div class="screens">
+
+  <!-- HOME PAGE -->
+  <div>
+    <div class="screen-label">Home Page &mdash; /</div>
+    <div class="screen">
+      <div class="nav">
+        <div class="nav-logo">AI Lab Arcade</div>
+        <div class="nav-links">
+          <span class="active">Home</span>
+          <span>Games</span>
+          <span>About</span>
+        </div>
+      </div>
+      <div class="home-content">
+        <div class="home-hero-title">AI Lab Arcade</div>
+        <div class="home-hero-sub">Build a game in 30 minutes. No experience needed.</div>
+        <div class="placeholder home-featured">Featured Game<br>(random pick)</div>
+        <div class="home-featured-label">Featured game rotates on each visit</div>
+        <button class="btn-placeholder">Browse All Games</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAMES PAGE -->
+  <div>
+    <div class="screen-label">Games Page &mdash; /games</div>
+    <div class="screen">
+      <div class="nav">
+        <div class="nav-logo">AI Lab Arcade</div>
+        <div class="nav-links">
+          <span>Home</span>
+          <span class="active">Games</span>
+          <span>About</span>
+        </div>
+      </div>
+      <div class="games-layout">
+        <div class="games-sidebar">
+          <div class="sidebar-title">All Games</div>
+          <div class="sidebar-item active">Pong</div>
+          <div class="sidebar-item">Snake</div>
+          <div class="sidebar-item">Space Dodge</div>
+          <div class="sidebar-item">Brick Break</div>
+          <div class="sidebar-item">Emoji Run</div>
+        </div>
+        <div class="games-main">
+          <div class="games-grid">
+            <div class="game-card">
+              <div class="game-card-thumb">thumbnail</div>
+              <div class="game-card-info">
+                <div class="game-card-title">2-Player Pong</div>
+                <div class="game-card-desc">Classic paddle game</div>
+                <div class="game-card-meta">42 plays &bull; AI Lab</div>
+              </div>
+            </div>
+            <div class="game-card">
+              <div class="game-card-thumb">thumbnail</div>
+              <div class="game-card-info">
+                <div class="game-card-title">Snake</div>
+                <div class="game-card-desc">Eat, grow, survive</div>
+                <div class="game-card-meta">38 plays &bull; AI Lab</div>
+              </div>
+            </div>
+            <div class="game-card">
+              <div class="game-card-thumb">thumbnail</div>
+              <div class="game-card-info">
+                <div class="game-card-title">Space Dodge</div>
+                <div class="game-card-desc">Dodge the asteroids</div>
+                <div class="game-card-meta">17 plays &bull; Visitor</div>
+              </div>
+            </div>
+            <div class="game-card">
+              <div class="game-card-thumb">thumbnail</div>
+              <div class="game-card-info">
+                <div class="game-card-title">Brick Break</div>
+                <div class="game-card-desc">Break all the bricks</div>
+                <div class="game-card-meta">12 plays &bull; Visitor</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLAY PAGE -->
+  <div>
+    <div class="screen-label">Play Page &mdash; /games/:name</div>
+    <div class="screen">
+      <div class="nav">
+        <div class="nav-logo">AI Lab Arcade</div>
+        <div class="nav-links">
+          <span>Home</span>
+          <span class="active">Games</span>
+          <span>About</span>
+        </div>
+      </div>
+      <div class="play-bar">
+        <span class="play-back">&larr; Back</span>
+        <span class="play-title">2-Player Pong</span>
+      </div>
+      <div class="play-iframe-area">
+        &lt;iframe&gt; — game renders here
+      </div>
+      <div class="play-controls">Player 1: W / S &nbsp;&nbsp;&bull;&nbsp;&nbsp; Player 2: Arrow Keys</div>
+    </div>
+  </div>
+
+  <!-- ABOUT PAGE -->
+  <div>
+    <div class="screen-label">About Page &mdash; /about</div>
+    <div class="screen">
+      <div class="nav">
+        <div class="nav-logo">AI Lab Arcade</div>
+        <div class="nav-links">
+          <span>Home</span>
+          <span>Games</span>
+          <span class="active">About</span>
+        </div>
+      </div>
+      <div class="about-content">
+        <div class="about-section">
+          <h3>About the AI Lab</h3>
+          <p>A space for anyone to walk in and build something in 30 minutes, even with zero coding experience. You talk, the AI builds.</p>
+        </div>
+        <div class="about-section">
+          <h3>How It Works</h3>
+          <div class="about-steps">
+            <div class="placeholder about-step">
+              <div class="about-step-num">1</div>
+              <div class="about-step-text">Open Cursor &amp; type /game</div>
+            </div>
+            <div class="placeholder about-step">
+              <div class="about-step-num">2</div>
+              <div class="about-step-text">Describe your game idea</div>
+            </div>
+            <div class="placeholder about-step">
+              <div class="about-step-num">3</div>
+              <div class="about-step-text">Test, iterate, ship</div>
+            </div>
+          </div>
+        </div>
+        <div class="about-section">
+          <h3>Credits</h3>
+          <p>Built by the AI Lab team. Games created by lab visitors.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

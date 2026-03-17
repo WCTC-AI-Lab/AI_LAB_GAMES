@@ -1,0 +1,27 @@
+---
+description: Core architecture rule — where game code lives and what the agent must never touch
+alwaysApply: true
+---
+
+# Game Sandbox Rule
+
+Every user-created game is a **self-contained static asset**, not a React component.
+
+## File structure
+
+```
+frontend/public/games/{game-name}/
+  index.html      # The entire game: HTML + CSS + JS in one file
+  thumbnail.png   # Optional screenshot for the gallery
+```
+
+- The main site renders each game inside an `<iframe src="/games/{game-name}/index.html">`.
+- Vite copies `public/` into `dist/` at build time, so games are served as-is with no bundling.
+
+## Boundaries
+
+- **NEVER** modify files under `frontend/src/` when building or editing a game.
+- **NEVER** add game logic to `App.tsx` or any React component.
+- **NEVER** install npm packages for game code. Games must have zero build-step dependencies.
+- Game files go in `frontend/public/games/{game-name}/` and nowhere else.
+- One game = one folder = one `index.html`.
