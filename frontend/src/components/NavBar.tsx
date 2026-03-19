@@ -27,7 +27,6 @@ export default function NavBar() {
             target="_blank" 
             rel="noopener noreferrer"
             className="deploy-link dev-link"
-            style={{ opacity: DEV_APP_URL === '#' ? 0.5 : 1, cursor: DEV_APP_URL === '#' ? 'not-allowed' : 'pointer' }}
           >
             Dev App
           </a>
