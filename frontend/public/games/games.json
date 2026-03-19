@@ -25,5 +25,22 @@
     "thumbnail": "/games/my-game/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo"]
+  },
+  {
+    "id": "starter",
+    "name": "My Game",
+    "description": "Shoot falling Jerry Seinfeld photos; dodge paddle hits. Gold stars — twin-shot power-up.",
+    "path": "/games/starter/index.html",
+    "author": "AI Lab",
+    "tags": ["solo", "starter"]
+  },
+  {
+    "id": "catch",
+    "name": "Catch the Stars",
+    "description": "Move the paddle to catch falling stars. Three lives — how high can you score?",
+    "path": "/games/catch/index.html",
+    "thumbnail": "/games/catch/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "reflexes"]
   }
 ]

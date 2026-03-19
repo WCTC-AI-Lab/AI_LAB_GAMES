@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Catch the Stars</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+const W = 520;
+const H = 420;
+const PADDLE_W = 76;
+const PADDLE_H = 16;
+const PADDLE_Y = H - 42;
+const STAR_R = 11;
+const BASE_FALL = 125;
+const PADDLE_SPEED = 340;
+
+kaplay({
+  width: W,
+  height: H,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+function circleRectHit(cx, cy, r, rx, ry, rw, rh) {
+  const nx = Math.max(rx, Math.min(cx, rx + rw));
+  const ny = Math.max(ry, Math.min(cy, ry + rh));
+  const dx = cx - nx;
+  const dy = cy - ny;
+  return dx * dx + dy * dy < r * r;
+}
+
+scene("game", () => {
+  let score = 0;
+  let lives = 3;
+  let spawnAcc = 0;
+  let gameOver = false;
+  const stars = [];
+
+  const paddle = add([
+    rect(PADDLE_W, PADDLE_H, { radius: 5 }),
+    pos(W / 2, PADDLE_Y),
+    anchor("center"),
+    color(148, 163, 184),
+  ]);
+
+  const scoreLabel = add([
+    text("Score: 0", { size: 16 }),
+    pos(10, 10),
+    color(226, 232, 240),
+    z(10),
+  ]);
+
+  const livesLabel = add([
+    text("Lives: 3", { size: 16 }),
+    pos(W - 10, 10),
+    anchor("topright"),
+    color(226, 232, 240),
+    z(10),
+  ]);
+
+  add([
+    text("← → or A D  ·  catch gold, miss costs a life", { size: 12 }),
+    pos(W / 2, H - 14),
+    anchor("center"),
+    color(148, 163, 184),
+    opacity(0.65),
+    z(10),
+  ]);
+
+  function spawnStar() {
+    const x = STAR_R + 8 + Math.random() * (W - STAR_R * 2 - 16);
+    const s = add([
+      circle(STAR_R),
+      pos(x, -STAR_R),
+      color(250, 204, 21),
+      anchor("center"),
+    ]);
+    stars.push(s);
+  }
+
+  spawnStar();
+  spawnAcc = 0.5;
+
+  onUpdate(() => {
+    if (gameOver) return;
+
+    const d = dt();
+    const px = paddle.pos.x;
+    const py = paddle.pos.y;
+    const half = PADDLE_W / 2;
+    const paddleLeft = px - half;
+    const paddleTop = py - PADDLE_H / 2;
+
+    if (isKeyDown("left") || isKeyDown("a")) paddle.pos.x -= PADDLE_SPEED * d;
+    if (isKeyDown("right") || isKeyDown("d")) paddle.pos.x += PADDLE_SPEED * d;
+    paddle.pos.x = Math.min(Math.max(paddle.pos.x, half + 4), W - half - 4);
+
+    const fallSpeed = BASE_FALL + score * 6;
+    const interval = Math.max(0.38, 1.05 - score * 0.035);
+
+    spawnAcc += d;
+    while (spawnAcc >= interval) {
+      spawnAcc -= interval;
+      spawnStar();
+    }
+
+    for (let i = stars.length - 1; i >= 0; i--) {
+      const s = stars[i];
+      s.pos.y += fallSpeed * d;
+
+      if (
+        circleRectHit(
+          s.pos.x,
+          s.pos.y,
+          STAR_R,
+          paddleLeft,
+          paddleTop,
+          PADDLE_W,
+          PADDLE_H
+        )
+      ) {
+        destroy(s);
+        stars.splice(i, 1);
+        score++;
+        scoreLabel.text = "Score: " + score;
+        continue;
+      }
+
+      if (s.pos.y > H + STAR_R + 4) {
+        destroy(s);
+        stars.splice(i, 1);
+        lives--;
+        livesLabel.text = "Lives: " + Math.max(0, lives);
+        if (lives <= 0) gameOver = true;
+      }
+    }
+  });
+
+  onDraw(() => {
+    if (!gameOver) return;
+
+    drawRect({
+      pos: vec2(0, 0),
+      width: W,
+      height: H,
+      color: rgb(15, 23, 42),
+      opacity: 0.72,
+    });
+
+    drawRect({
+      pos: vec2(W / 2 - 118, H / 2 - 62),
+      width: 236,
+      height: 124,
+      radius: 10,
+      color: rgb(15, 23, 42),
+      opacity: 0.96,
+      outline: { width: 1, color: rgb(148, 163, 184) },
+    });
+
+    drawText({
+      text: "Game Over",
+      size: 24,
+      pos: vec2(W / 2, H / 2 - 28),
+      anchor: "center",
+      color: rgb(248, 250, 252),
+    });
+    drawText({
+      text: "Score: " + score,
+      size: 17,
+      pos: vec2(W / 2, H / 2 + 2),
+      anchor: "center",
+      color: rgb(203, 213, 245),
+    });
+    drawText({
+      text: "Space or Enter to play again",
+      size: 12,
+      pos: vec2(W / 2, H / 2 + 34),
+      anchor: "center",
+      color: rgb(148, 163, 184),
+    });
+  });
+
+  onKeyPress("space", () => {
+    if (gameOver) go("game");
+  });
+  onKeyPress("enter", () => {
+    if (gameOver) go("game");
+  });
+});
+
+go("game");
+</script>
+</body>
+</html>
