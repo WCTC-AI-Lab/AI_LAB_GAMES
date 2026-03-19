@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 
-const LIVE_APP_URL = 'https://zealous-coast-060765e0f.2.azurestaticapps.net/'
-const DEV_APP_URL = '#' // Placeholder for now
+const LIVE_APP_URL = 'https://gray-coast-04dce870f.4.azurestaticapps.net/'
+const DEV_APP_URL = 'https://gray-coast-04dce870f-dev.eastus2.4.azurestaticapps.net/'
 
 export default function NavBar() {
   return (
