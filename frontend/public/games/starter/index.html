@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Game</title>
+<!-- Target photo: Jerry Seinfeld at the Beacon Theater (2019), slgckgc, CC BY 2.0, Wikimedia Commons -->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+const W = 440;
+const H = 440;
+const PLAYER_W = 44;
+const PLAYER_H = 14;
+const PLAYER_Y = H - 36;
+const TARGET_R = 22;
+const BULLET_SPEED = 520;
+const PLAYER_SPEED = 320;
+const BASE_FALL = 52;
+const SPAWN_START = 1.1;
+const STAR_HIT_R = 20;
+const DOUBLE_SHOT_GRANT = 14;
+const STAR_SPAWN_MIN = 7;
+const STAR_SPAWN_MAX = 16;
+const JERRY_TEX_W = 88;
+const JERRY_SCALE = (TARGET_R * 2) / JERRY_TEX_W;
+
+kaplay({
+  width: W,
+  height: H,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+function dist2(ax, ay, bx, by) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+function circleRectHit(cx, cy, r, rx, ry, rw, rh) {
+  const nx = Math.max(rx, Math.min(cx, rx + rw));
+  const ny = Math.max(ry, Math.min(cy, ry + rh));
+  const dx = cx - nx;
+  const dy = cy - ny;
+  return dx * dx + dy * dy < r * r;
+}
+
+let loseLifeAudioCtx = null;
+function playLoseLifeSound() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!loseLifeAudioCtx) loseLifeAudioCtx = new AC();
+    const ctx = loseLifeAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(340, t0);
+    osc.frequency.exponentialRampToValueAtTime(90, t0 + 0.16);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(0.11, t0 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.3);
+  } catch (e) {}
+}
+
+scene("game", () => {
+  let score = 0;
+  let lives = 3;
+  let spawnAcc = 0;
+  let shotCooldown = 0;
+  let gameOver = false;
+  let doubleShotShotsLeft = 0;
+  let starSpawnTimer = STAR_SPAWN_MIN + Math.random() * (STAR_SPAWN_MAX - STAR_SPAWN_MIN);
+  const targets = [];
+  const bullets = [];
+  const bonusStars = [];
+  const explosionBits = [];
+
+  function spawnSmallExplosion(x, y) {
+    const palette = [
+      [255, 220, 120],
+      [255, 150, 70],
+      [255, 255, 235],
+      [255, 95, 45],
+    ];
+    const n = 14;
+    for (let k = 0; k < n; k++) {
+      const ang = (Math.PI * 2 * k) / n + Math.random() * 0.45;
+      const sp = 100 + Math.random() * 140;
+      const r = 2 + Math.random() * 4;
+      const c = palette[k % palette.length];
+      const p = add([
+        circle(r),
+        pos(x, y),
+        anchor("center"),
+        color(c[0], c[1], c[2]),
+        opacity(1),
+        z(7),
+      ]);
+      p.exVx = Math.cos(ang) * sp;
+      p.exVy = Math.sin(ang) * sp;
+      p.exLife = 0.2 + Math.random() * 0.14;
+      p.exMax = p.exLife;
+      explosionBits.push(p);
+    }
+  }
+
+  const player = add([
+    rect(PLAYER_W, PLAYER_H, { radius: 6 }),
+    pos(W / 2, PLAYER_Y),
+    anchor("center"),
+    color(148, 163, 184),
+  ]);
+
+  const scoreLabel = add([
+    text("Score: 0", { size: 16 }),
+    pos(12, 12),
+    color(226, 232, 240),
+    z(10),
+  ]);
+
+  const livesLabel = add([
+    text("Lives: 3", { size: 16 }),
+    pos(W - 12, 12),
+    anchor("topright"),
+    color(226, 232, 240),
+    z(10),
+  ]);
+
+  const powerLabel = add([
+    text("", { size: 13 }),
+    pos(12, 32),
+    color(250, 204, 21),
+    z(10),
+  ]);
+
+  function refreshPowerLabel() {
+    if (doubleShotShotsLeft > 0) {
+      powerLabel.text = "Twin shots: " + doubleShotShotsLeft;
+      powerLabel.opacity = 1;
+    } else {
+      powerLabel.text = "";
+      powerLabel.opacity = 0;
+    }
+  }
+
+  add([
+    text("← → or A D  ·  Space  ·  3 lives if Jerry hits your paddle  ·  Shoot the gold ★ for twin shots", { size: 9 }),
+    pos(W / 2, H - 12),
+    anchor("center"),
+    color(148, 163, 184),
+    opacity(0.7),
+    z(10),
+  ]);
+
+  function spawnTarget() {
+    const x = TARGET_R + 8 + Math.random() * (W - TARGET_R * 2 - 16);
+    const t = add([
+      sprite("jerry"),
+      pos(x, -TARGET_R),
+      anchor("center"),
+      scale(JERRY_SCALE),
+      z(4),
+    ]);
+    t.vx = (Math.random() - 0.5) * 70;
+    t.vy = BASE_FALL + Math.min(score * 4, 95);
+    targets.push(t);
+  }
+
+  function spawnBonusStar() {
+    if (bonusStars.length > 0) return;
+    const x = 40 + Math.random() * (W - 80);
+    const s = add([
+      text("★", { size: 26 }),
+      pos(x, -24),
+      anchor("center"),
+      color(250, 204, 21),
+      z(6),
+    ]);
+    s.vx = (Math.random() - 0.5) * 50;
+    s.vy = 36;
+    bonusStars.push(s);
+  }
+
+  function spawnBullet(offsetX) {
+    const b = add([
+      rect(5, 16, { radius: 2 }),
+      pos(player.pos.x + offsetX, player.pos.y - 22),
+      anchor("center"),
+      color(254, 240, 138),
+      z(5),
+    ]);
+    bullets.push(b);
+  }
+
+  function tryShoot() {
+    if (gameOver || shotCooldown > 0) return;
+    shotCooldown = 0.2;
+    if (doubleShotShotsLeft > 0) {
+      doubleShotShotsLeft--;
+      spawnBullet(-11);
+      spawnBullet(11);
+      refreshPowerLabel();
+    } else {
+      spawnBullet(0);
+    }
+  }
+
+  spawnTarget();
+  spawnAcc = SPAWN_START * 0.4;
+
+  onUpdate(() => {
+    const d = dt();
+
+    for (let k = explosionBits.length - 1; k >= 0; k--) {
+      const p = explosionBits[k];
+      p.exLife -= d;
+      p.pos.x += p.exVx * d;
+      p.pos.y += p.exVy * d;
+      p.opacity = Math.max(0, p.exLife / p.exMax);
+      if (p.exLife <= 0) {
+        destroy(p);
+        explosionBits.splice(k, 1);
+      }
+    }
+
+    if (gameOver) return;
+
+    shotCooldown = Math.max(0, shotCooldown - d);
+
+    if (isKeyDown("left") || isKeyDown("a")) player.pos.x -= PLAYER_SPEED * d;
+    if (isKeyDown("right") || isKeyDown("d")) player.pos.x += PLAYER_SPEED * d;
+    const half = PLAYER_W / 2;
+    player.pos.x = Math.min(Math.max(player.pos.x, half + 4), W - half - 4);
+
+    const interval = Math.max(0.45, 1.15 - score * 0.028);
+    spawnAcc += d;
+    while (spawnAcc >= interval) {
+      spawnAcc -= interval;
+      spawnTarget();
+    }
+
+    starSpawnTimer -= d;
+    if (starSpawnTimer <= 0) {
+      spawnBonusStar();
+      starSpawnTimer = STAR_SPAWN_MIN + Math.random() * (STAR_SPAWN_MAX - STAR_SPAWN_MIN);
+    }
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.pos.y -= BULLET_SPEED * d;
+      if (b.pos.y < -24) {
+        destroy(b);
+        bullets.splice(i, 1);
+      }
+    }
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      for (let j = bonusStars.length - 1; j >= 0; j--) {
+        const s = bonusStars[j];
+        const hr = STAR_HIT_R;
+        if (dist2(b.pos.x, b.pos.y, s.pos.x, s.pos.y) < hr * hr) {
+          destroy(b);
+          bullets.splice(i, 1);
+          destroy(s);
+          bonusStars.splice(j, 1);
+          doubleShotShotsLeft += DOUBLE_SHOT_GRANT;
+          refreshPowerLabel();
+          break;
+        }
+      }
+    }
+
+    for (let j = bonusStars.length - 1; j >= 0; j--) {
+      const s = bonusStars[j];
+      s.pos.x += s.vx * d;
+      s.pos.y += s.vy * d;
+      if (s.pos.x < 24) {
+        s.pos.x = 24;
+        s.vx *= -1;
+      } else if (s.pos.x > W - 24) {
+        s.pos.x = W - 24;
+        s.vx *= -1;
+      }
+      if (s.pos.y > H + 30) {
+        destroy(s);
+        bonusStars.splice(j, 1);
+        continue;
+      }
+      const px = player.pos.x;
+      const py = player.pos.y;
+      const paddleLeft = px - PLAYER_W / 2;
+      const paddleTop = py - PLAYER_H / 2;
+      if (
+        circleRectHit(
+          s.pos.x,
+          s.pos.y,
+          STAR_HIT_R,
+          paddleLeft,
+          paddleTop,
+          PLAYER_W,
+          PLAYER_H
+        )
+      ) {
+        destroy(s);
+        bonusStars.splice(j, 1);
+      }
+    }
+
+    for (let i = targets.length - 1; i >= 0; i--) {
+      const t = targets[i];
+      t.pos.x += t.vx * d;
+      t.pos.y += t.vy * d;
+      if (t.pos.x < TARGET_R + 4) {
+        t.pos.x = TARGET_R + 4;
+        t.vx *= -1;
+      } else if (t.pos.x > W - TARGET_R - 4) {
+        t.pos.x = W - TARGET_R - 4;
+        t.vx *= -1;
+      }
+
+      let hit = false;
+      for (let j = bullets.length - 1; j >= 0; j--) {
+        const b = bullets[j];
+        const hitR = TARGET_R + 6;
+        if (dist2(b.pos.x, b.pos.y, t.pos.x, t.pos.y) < hitR * hitR) {
+          destroy(b);
+          bullets.splice(j, 1);
+          hit = true;
+          break;
+        }
+      }
+
+      if (hit) {
+        spawnSmallExplosion(t.pos.x, t.pos.y);
+        destroy(t);
+        targets.splice(i, 1);
+        score++;
+        scoreLabel.text = "Score: " + score;
+        continue;
+      }
+
+      const px = player.pos.x;
+      const py = player.pos.y;
+      const paddleLeft = px - PLAYER_W / 2;
+      const paddleTop = py - PLAYER_H / 2;
+      if (
+        circleRectHit(
+          t.pos.x,
+          t.pos.y,
+          TARGET_R,
+          paddleLeft,
+          paddleTop,
+          PLAYER_W,
+          PLAYER_H
+        )
+      ) {
+        destroy(t);
+        targets.splice(i, 1);
+        playLoseLifeSound();
+        lives--;
+        livesLabel.text = "Lives: " + Math.max(0, lives);
+        if (lives <= 0) gameOver = true;
+        continue;
+      }
+
+      if (t.pos.y > H + TARGET_R) {
+        destroy(t);
+        targets.splice(i, 1);
+      }
+    }
+  });
+
+  onKeyPress("space", () => {
+    if (gameOver) go("game");
+    else tryShoot();
+  });
+
+  onDraw(() => {
+    if (!gameOver) return;
+
+    drawRect({
+      pos: vec2(0, 0),
+      width: W,
+      height: H,
+      color: rgb(15, 23, 42),
+      opacity: 0.72,
+    });
+
+    drawRect({
+      pos: vec2(W / 2 - 118, H / 2 - 62),
+      width: 236,
+      height: 124,
+      radius: 10,
+      color: rgb(15, 23, 42),
+      opacity: 0.96,
+      outline: { width: 1, color: rgb(148, 163, 184) },
+    });
+
+    drawText({
+      text: "Game Over",
+      size: 24,
+      pos: vec2(W / 2, H / 2 - 28),
+      anchor: "center",
+      color: rgb(248, 250, 252),
+    });
+    drawText({
+      text: "Score: " + score,
+      size: 17,
+      pos: vec2(W / 2, H / 2 + 2),
+      anchor: "center",
+      color: rgb(203, 213, 245),
+    });
+    drawText({
+      text: "Space or Enter to play again",
+      size: 12,
+      pos: vec2(W / 2, H / 2 + 34),
+      anchor: "center",
+      color: rgb(148, 163, 184),
+    });
+  });
+
+  onKeyPress("enter", () => {
+    if (gameOver) go("game");
+  });
+});
+
+loadSprite("jerry", "jerry.jpg");
+onLoad(function () {
+  go("game");
+});
+</script>
+</body>
+</html>
