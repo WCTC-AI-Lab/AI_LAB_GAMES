@@ -64,17 +64,19 @@ If they don't have a name yet, use `{original-id}-remix` as a temporary slug (it
 - Run `cd frontend && npm run build`. Fix errors if any.
 - Run `cd frontend && npm run dev` in the background if not already running.
 
-### 6. Open the new game in the Cursor browser
+### 6. Open the new game for the user
 
-Put the direct link in chat so the user opens it in Cursor's built-in browser:
+- Put the URL in your chat message as a **markdown link** so it's clickable.
+- **CRITICAL FORMATTING:** Use markdown link syntax: `[Click here to open your game](http://localhost:5173/games/{new-id}/index.html)`. Do NOT use backticks around the URL, do NOT put it in a code block.
+- Say something like:
 
-> Your copy is ready! **Click this link to open it right next to our chat:**
+> Your copy is ready! It's an exact copy of {original name}.
 >
-> http://localhost:5173/games/{new-id}/index.html
+> [Click here to open your game](http://localhost:5173/games/{new-id}/index.html)
 >
-> It's an exact copy of {original name} right now. What do you want to change first?
+> ⚠️ **Every time I make a change, you need to refresh the game page.** I'll remind you each time.
 >
-> ⚠️ **Every time I make a change, you need to refresh that game page.** I'll remind you each time.
+> What do you want to change first?
 
 ### 7. Iterate
 

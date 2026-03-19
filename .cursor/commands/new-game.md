@@ -58,20 +58,19 @@ Say something like (adjust to sound natural):
 - Then run `cd frontend && npm run dev` **in the background**.
 - If the dev server errors (e.g. port in use), check for an already-running dev server in the terminal output and use that URL.
 
-### 4. Open the game in the Cursor browser
-
-**This is critical.** The user needs to see their game RIGHT NEXT to the chat — in Cursor's built-in browser, NOT an external browser.
+### 4. Open the game for the user
 
 - Get the dev server URL (typically `http://localhost:5173`).
 - The game's direct URL is: `http://localhost:5173/games/{id}/index.html`
-- Put the clickable link in your chat message. When the user clicks it, Cursor opens it in the built-in Simple Browser panel next to the chat.
+- Put the URL in your chat message as a **markdown link** so it's clickable.
+- **CRITICAL FORMATTING:** Use markdown link syntax: `[Click here to open your game](http://localhost:5173/games/{id}/index.html)`. Do NOT use backticks around the URL, do NOT put it in a code block. It MUST be a markdown link or it won't be clickable.
 - Say something like:
 
-> Your game is ready! **Click this link to open it right next to our chat:**
+> Your game is ready!
 >
-> http://localhost:5173/games/{id}/index.html
+> [Click here to open your game](http://localhost:5173/games/{id}/index.html)
 >
-> ⚠️ **Every time I make a change, you need to refresh that game page** (click the refresh button or Ctrl+R in the game panel). I'll remind you each time.
+> ⚠️ **Every time I make a change, you need to refresh the game page** (F5 or Ctrl+R). I'll remind you each time.
 >
 > What should we add first?
 

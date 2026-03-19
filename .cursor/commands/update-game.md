@@ -40,16 +40,18 @@ Say something like:
 2. List the games for the user so they can pick one.
 3. Confirm the selected `id` in your next message.
 
-### 3. Open the game in the Cursor browser
+### 3. Open the game for the user
 
 - Make sure the dev server is running (`cd frontend && npm run dev` in background if needed).
-- Put the direct game link in chat so the user opens it in Cursor's built-in browser (not an external browser):
+- Put the URL in your chat message as a **markdown link** so it's clickable.
+- **CRITICAL FORMATTING:** Use markdown link syntax: `[Click here to open the game](http://localhost:5173/games/{id}/index.html)`. Do NOT use backticks around the URL, do NOT put it in a code block.
+- Say something like:
 
-> Click this link to open the game right next to our chat:
+> I've got the game ready!
 >
-> http://localhost:5173/games/{id}/index.html
+> [Click here to open the game](http://localhost:5173/games/{id}/index.html)
 >
-> ⚠️ **Every time I make a change, you need to refresh that game page.** I'll remind you each time.
+> ⚠️ **Every time I make a change, you need to refresh the game page.** I'll remind you each time.
 >
 > What do you want to change?
 
