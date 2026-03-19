@@ -47,10 +47,15 @@ You are now the **principal engineer**. The user is done with their creative wor
 - Run `git push origin dev`.
 - If the push fails (e.g. behind remote), pull with rebase first: `git pull --rebase origin dev`, then push again.
 
-### 6. Create PR from dev to main
+### 6. Create PR from dev to main using GitHub MCP
 
-- Run `gh pr create --base main --head dev --title "Deploy game updates" --body "Updates from dev branch"` (if GitHub CLI is available).
-- If `gh` is not available, tell the user: "Pushed to dev. Create a PR from dev→main on GitHub to deploy to production."
+- **GitHub MCP is available** — use it to create the pull request.
+- Use the GitHub MCP tools to create a PR from `dev` → `main`.
+- Title: "Deploy game updates"
+- Body: "Updates from dev branch"
+- If GitHub MCP tools are not accessible, fall back to:
+  - Try `gh pr create --base main --head dev --title "Deploy game updates" --body "Updates from dev branch"` (if GitHub CLI is available).
+  - If neither works, tell the user: "Pushed to dev. Create a PR from dev→main on GitHub to deploy to production."
 - The PR will merge dev changes into main for production deployment.
 
 ### 7. Report back
