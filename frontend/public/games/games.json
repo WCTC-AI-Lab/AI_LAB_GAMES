@@ -16,5 +16,14 @@
     "thumbnail": "/games/snake/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo", "classic"]
+  },
+  {
+    "id": "my-game",
+    "name": "Arrow Shooter",
+    "description": "Shoot arrows at the red targets. WASD move, W jump, click-drag-release to aim (drag length = power).",
+    "path": "/games/my-game/index.html",
+    "thumbnail": "/games/my-game/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo"]
   }
 ]
