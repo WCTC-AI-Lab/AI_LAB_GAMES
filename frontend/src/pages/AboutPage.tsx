@@ -13,7 +13,7 @@ export default function AboutPage() {
           <div className="about-step">
             <div className="step-num">1</div>
             <div className="step-text">
-              Open Cursor and type <code>/game</code> to start your adventure
+              Open Cursor and type <code>/new-game</code> to start your adventure
             </div>
           </div>
           <div className="about-step">
@@ -25,7 +25,7 @@ export default function AboutPage() {
           <div className="about-step">
             <div className="step-num">3</div>
             <div className="step-text">
-              Test in your browser, iterate, and ship it to the arcade
+              Test in your browser, iterate, and type <code>/finish</code> to ship it to the arcade
             </div>
           </div>
         </div>
@@ -37,7 +37,6 @@ export default function AboutPage() {
           <li>Your game fits on one screen — no scrolling worlds</li>
           <li>Shapes, colors, and emojis are your sprites</li>
           <li>Every game has a score, a way to lose, and a way to restart</li>
-          <li>30 minutes, start to finish</li>
         </ul>
       </section>
 
