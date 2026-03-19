@@ -160,9 +160,70 @@
   max-width: 420px;
 }
 
+.home-games-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  width: 100%;
+  max-width: 1000px;
+  text-align: left;
+}
+
 .featured-section {
   width: 100%;
   max-width: 360px;
+}
+
+.featured-row {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.featured-row .btn-primary {
+  margin-top: 2.5rem;
+  white-space: nowrap;
+}
+
+.featured-large {
+  flex: 1;
+  max-width: 500px;
+}
+
+.featured-large .game-card-thumb {
+  height: 200px;
+}
+
+.featured-large .game-card-title {
+  font-size: 1.25rem;
+}
+
+.featured-large .game-card-desc {
+  font-size: 1rem;
+}
+
+.more-games-section {
+  width: 100%;
+}
+
+.more-games-section .section-label {
+  margin-bottom: 1rem;
+}
+
+.more-games-row {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.more-games-row .game-card {
+  flex: 1;
+  min-width: 200px;
+  max-width: 280px;
 }
 
 /* ── Games page ── */
