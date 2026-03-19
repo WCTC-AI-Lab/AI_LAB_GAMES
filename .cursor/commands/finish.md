@@ -50,10 +50,19 @@ You are now the **principal engineer**. The user is done with their creative wor
 ### 6. Create PR from dev to main using GitHub MCP
 
 - **GitHub MCP is available** — use it to create the pull request.
-- Use the GitHub MCP tools to create a PR from `dev` → `main`.
-- Title: "Deploy game updates"
-- Body: "Updates from dev branch"
-- If GitHub MCP tools are not accessible, fall back to:
+- **How to find GitHub MCP tools:**
+  - GitHub MCP server provides tools for creating pull requests. These tools should be available if the GitHub MCP server is configured in Cursor.
+  - Look for tools with names like `create_pull_request`, `github_create_pull_request`, or similar GitHub-related tool names.
+  - The tools are provided by the GitHub MCP server and should appear in the available tools list when the server is properly configured.
+  - If you cannot find GitHub MCP tools by name, try using them directly by attempting to create a PR - the tools may be available but not obviously named.
+- **Using GitHub MCP:**
+  - Use the GitHub MCP tool to create a PR from `dev` → `main`.
+  - Repository: `jroberts-fellow/AI_LAB_GAMES` (from `git remote -v`)
+  - Title: "Deploy game updates"
+  - Body: "Updates from dev branch"
+  - Base branch: `main`
+  - Head branch: `dev`
+- **Fallback options if GitHub MCP tools are not accessible:**
   - Try `gh pr create --base main --head dev --title "Deploy game updates" --body "Updates from dev branch"` (if GitHub CLI is available).
   - If neither works, tell the user: "Pushed to dev. Create a PR from dev→main on GitHub to deploy to production."
 - The PR will merge dev changes into main for production deployment.
