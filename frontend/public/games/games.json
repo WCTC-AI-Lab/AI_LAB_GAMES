@@ -34,5 +34,14 @@
     "thumbnail": "/games/heckle-seinfeld/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo", "starter"]
+  },
+  {
+    "id": "my-game",
+    "name": "Breakout Tetris Mashup",
+    "description": "Breakout meets Tetris! Break bricks with the ball, then guide falling Tetris pieces into place. ← → move, Space rotate.",
+    "path": "/games/my-game/index.html",
+    "thumbnail": "/games/my-game/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo"]
   }
 ]

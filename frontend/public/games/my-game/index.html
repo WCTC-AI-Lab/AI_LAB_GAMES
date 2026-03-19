@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Breakout Tetris Mashup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+kaplay({
+  width: 600,
+  height: 600,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+const W = 600;
+const H = 600;
+const PADDLE_W = 80;
+const PADDLE_H = 12;
+const PADDLE_Y = H - 30;
+const PADDLE_SPEED = 300;
+const BALL_R = 8;
+const BALL_SPEED = 250;
+const BRICK_W = 50;
+const BRICK_H = 20;
+const BRICK_ROWS = 5;
+const BRICK_COLS = 10;
+const BRICK_GAP = 5;
+const BRICK_START_Y = 60;
+
+// Tetris pieces (I, O, T, S, Z, J, L)
+const TETRIS_SHAPES = [
+  // I piece
+  [[1,1,1,1]],
+  // O piece
+  [[1,1],[1,1]],
+  // T piece
+  [[0,1,0],[1,1,1]],
+  // S piece
+  [[0,1,1],[1,1,0]],
+  // Z piece
+  [[1,1,0],[0,1,1]],
+  // J piece
+  [[1,0,0],[1,1,1]],
+  // L piece
+  [[0,0,1],[1,1,1]]
+];
+
+function rotatePiece(piece) {
+  const rows = piece.length;
+  const cols = piece[0].length;
+  const rotated = [];
+  for (let c = 0; c < cols; c++) {
+    rotated[c] = [];
+    for (let r = rows - 1; r >= 0; r--) {
+      rotated[c][rows - 1 - r] = piece[r][c];
+    }
+  }
+  return rotated;
+}
+
+scene("game", () => {
+  let score = 0;
+  let bricks = [];
+  let ball = null;
+  let ballDir = { x: 0.7, y: -0.7 };
+  let paddle = null;
+  let fallingPiece = null;
+  let pieceRotation = 0;
+  let pieceX = 0;
+  let pieceY = 0;
+  let pieceType = 0;
+  let gameOver = false;
+  let lockedBlocks = []; // Blocks that have been placed
+  let moveTimer = 0; // Timer for rate limiting piece movement
+  let moveCooldown = 0.15; // Seconds between moves when holding key
+  let firstMove = true; // Allow immediate first move
+
+  const scoreLabel = add([
+    text("Score: 0", { size: 18 }),
+    pos(20, 20),
+    color(200, 200, 210),
+    z(10)
+  ]);
+
+  add([
+    text("← → Move | Space Rotate", { size: 12 }),
+    pos(W / 2, H - 10),
+    anchor("center"),
+    color(200, 200, 210),
+    opacity(0.6),
+    z(10)
+  ]);
+
+  // Create paddle
+  paddle = add([
+    rect(PADDLE_W, PADDLE_H),
+    pos(W / 2 - PADDLE_W / 2, PADDLE_Y),
+    color(220, 225, 235),
+    anchor("topleft"),
+    "paddle"
+  ]);
+
+  // Create bricks
+  function createBricks() {
+    bricks = [];
+    const startX = (W - (BRICK_COLS * (BRICK_W + BRICK_GAP) - BRICK_GAP)) / 2;
+    for (let row = 0; row < BRICK_ROWS; row++) {
+      for (let col = 0; col < BRICK_COLS; col++) {
+        const x = startX + col * (BRICK_W + BRICK_GAP);
+        const y = BRICK_START_Y + row * (BRICK_H + BRICK_GAP);
+        const colors = [
+          [239, 68, 68],   // red
+          [249, 115, 22],  // orange
+          [250, 204, 21],  // yellow
+          [34, 197, 94],   // green
+          [59, 130, 246]   // blue
+        ];
+        const brick = add([
+          rect(BRICK_W, BRICK_H),
+          pos(x, y),
+          color(colors[row % colors.length]),
+          anchor("topleft"),
+          "brick"
+        ]);
+        bricks.push(brick);
+      }
+    }
+  }
+
+  // Create ball
+  function createBall() {
+    if (ball) destroy(ball);
+    ball = add([
+      circle(BALL_R),
+      pos(W / 2, PADDLE_Y - 30),
+      color(250, 204, 21),
+      anchor("center"),
+      "ball"
+    ]);
+    const angle = Math.random() * Math.PI / 3 - Math.PI / 6; // -30 to 30 degrees
+    ballDir = { x: Math.sin(angle), y: -Math.cos(angle) };
+  }
+
+  // Create falling Tetris piece
+  function createFallingPiece(brickX, brickY) {
+    pieceType = Math.floor(Math.random() * TETRIS_SHAPES.length);
+    pieceRotation = 0;
+    const cellSize = BRICK_H;
+    // Snap starting position to grid
+    pieceX = Math.floor(brickX / cellSize) * cellSize;
+    pieceY = Math.floor(brickY / cellSize) * cellSize;
+    fallingPiece = TETRIS_SHAPES[pieceType].map(row => [...row]);
+  }
+
+  // Check if piece can move/rotate
+  function canPlacePiece(px, py, shape) {
+    const cellSize = BRICK_H;
+    // Snap positions to grid for accurate collision
+    px = Math.floor(px / cellSize) * cellSize;
+    py = Math.floor(py / cellSize) * cellSize;
+    
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (shape[r][c]) {
+          const x = px + c * cellSize;
+          const y = py + r * cellSize;
+          
+          // Check boundaries - make sure bottom check is strict
+          if (x < 0 || x + cellSize > W || y < 0 || y + cellSize >= H) return false;
+          
+          // Check locked blocks - use overlap detection for robustness
+          for (const block of lockedBlocks) {
+            // Check if this cell overlaps with the locked block (with small tolerance)
+            const tolerance = 1;
+            if (x < block.x + cellSize - tolerance && 
+                x + cellSize > block.x + tolerance &&
+                y < block.y + cellSize - tolerance && 
+                y + cellSize > block.y + tolerance) {
+              return false;
+            }
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  // Lock piece in place
+  function lockPiece() {
+    if (!fallingPiece) return;
+    const cellSize = BRICK_H;
+    // Snap to grid before locking
+    pieceX = Math.floor(pieceX / cellSize) * cellSize;
+    pieceY = Math.floor(pieceY / cellSize) * cellSize;
+    for (let r = 0; r < fallingPiece.length; r++) {
+      for (let c = 0; c < fallingPiece[r].length; c++) {
+        if (fallingPiece[r][c]) {
+          const x = pieceX + c * cellSize;
+          const y = pieceY + r * cellSize;
+          lockedBlocks.push({ x, y });
+          add([
+            rect(cellSize - 2, cellSize - 2),
+            pos(x + 1, y + 1),
+            color(148, 163, 184),
+            anchor("topleft"),
+            "locked"
+          ]);
+        }
+      }
+    }
+    fallingPiece = null;
+  }
+
+  createBricks();
+  createBall();
+
+  onUpdate(() => {
+    if (gameOver) return;
+
+    const d = dt();
+
+    // Paddle movement (when no piece is falling)
+    if (fallingPiece === null) {
+      if (isKeyDown("left") || isKeyDown("a")) {
+        paddle.pos.x -= PADDLE_SPEED * d;
+      }
+      if (isKeyDown("right") || isKeyDown("d")) {
+        paddle.pos.x += PADDLE_SPEED * d;
+      }
+      paddle.pos.x = Math.max(0, Math.min(W - PADDLE_W, paddle.pos.x));
+    }
+
+    // Ball movement (paused when piece is falling)
+    if (ball && !gameOver && fallingPiece === null) {
+      ball.pos.x += ballDir.x * BALL_SPEED * d;
+      ball.pos.y += ballDir.y * BALL_SPEED * d;
+
+      // Wall bounces
+      if (ball.pos.x - BALL_R <= 0 || ball.pos.x + BALL_R >= W) {
+        ballDir.x *= -1;
+        ball.pos.x = Math.max(BALL_R, Math.min(W - BALL_R, ball.pos.x));
+      }
+      if (ball.pos.y - BALL_R <= 0) {
+        ballDir.y *= -1;
+        ball.pos.y = BALL_R;
+      }
+
+      // Paddle bounce
+      if (ball.pos.y + BALL_R >= PADDLE_Y && 
+          ball.pos.y - BALL_R <= PADDLE_Y + PADDLE_H &&
+          ball.pos.x + BALL_R >= paddle.pos.x &&
+          ball.pos.x - BALL_R <= paddle.pos.x + PADDLE_W) {
+        const hitPos = (ball.pos.x - paddle.pos.x) / PADDLE_W;
+        const angle = (hitPos - 0.5) * Math.PI / 3; // -60 to 60 degrees
+        ballDir.x = Math.sin(angle);
+        ballDir.y = -Math.cos(angle);
+        ball.pos.y = PADDLE_Y - BALL_R;
+      }
+
+      // Ball collision with locked blocks
+      const cellSize = BRICK_H;
+      for (const block of lockedBlocks) {
+        if (ball.pos.x + BALL_R >= block.x &&
+            ball.pos.x - BALL_R <= block.x + cellSize &&
+            ball.pos.y + BALL_R >= block.y &&
+            ball.pos.y - BALL_R <= block.y + cellSize) {
+          // Bounce off block
+          const blockCenterX = block.x + cellSize / 2;
+          const blockCenterY = block.y + cellSize / 2;
+          const dx = ball.pos.x - blockCenterX;
+          const dy = ball.pos.y - blockCenterY;
+          const len = Math.hypot(dx, dy) || 1;
+          ballDir.x = dx / len;
+          ballDir.y = dy / len;
+          score += 5;
+          scoreLabel.text = "Score: " + score;
+        }
+      }
+
+      // Ball falls off bottom
+      if (ball.pos.y > H) {
+        gameOver = true;
+        add([
+          text("Game Over!", { size: 32 }),
+          pos(W / 2, H / 2 - 20),
+          anchor("center"),
+          color(239, 68, 68),
+          z(20)
+        ]);
+        add([
+          text("Press Space to restart", { size: 16 }),
+          pos(W / 2, H / 2 + 20),
+          anchor("center"),
+          color(200, 200, 210),
+          z(20)
+        ]);
+      }
+
+      // Brick collisions
+      for (let i = bricks.length - 1; i >= 0; i--) {
+        const brick = bricks[i];
+        if (ball.pos.x + BALL_R >= brick.pos.x &&
+            ball.pos.x - BALL_R <= brick.pos.x + BRICK_W &&
+            ball.pos.y + BALL_R >= brick.pos.y &&
+            ball.pos.y - BALL_R <= brick.pos.y + BRICK_H) {
+          
+          // Create falling piece from this brick
+          createFallingPiece(brick.pos.x, brick.pos.y);
+          
+          // Remove brick
+          destroy(brick);
+          bricks.splice(i, 1);
+          score += 10;
+          scoreLabel.text = "Score: " + score;
+
+          // Bounce ball
+          const brickCenterX = brick.pos.x + BRICK_W / 2;
+          const brickCenterY = brick.pos.y + BRICK_H / 2;
+          const dx = ball.pos.x - brickCenterX;
+          const dy = ball.pos.y - brickCenterY;
+          const len = Math.hypot(dx, dy) || 1;
+          ballDir.x = dx / len;
+          ballDir.y = dy / len;
+        }
+      }
+    }
+
+    // Falling piece movement
+    if (fallingPiece) {
+      // Piece controls - allow holding keys with rate limiting
+      const cellSize = BRICK_H;
+      moveTimer += d;
+      let moved = false;
+      
+      if (isKeyDown("left") || isKeyDown("a")) {
+        if (firstMove || moveTimer >= moveCooldown) {
+          const newX = pieceX - cellSize;
+          if (canPlacePiece(newX, pieceY, fallingPiece)) {
+            pieceX = newX;
+            moveTimer = 0;
+            firstMove = false;
+            moved = true;
+          }
+        }
+      }
+      
+      if ((isKeyDown("right") || isKeyDown("d")) && !moved) {
+        if (firstMove || moveTimer >= moveCooldown) {
+          const newX = pieceX + cellSize;
+          if (canPlacePiece(newX, pieceY, fallingPiece)) {
+            pieceX = newX;
+            moveTimer = 0;
+            firstMove = false;
+          }
+        }
+      }
+      
+      // Reset first move flag and timer when key is released
+      if (!isKeyDown("left") && !isKeyDown("a") && !isKeyDown("right") && !isKeyDown("d")) {
+        firstMove = true;
+        moveTimer = 0;
+      }
+
+      // Piece falls - snap to grid (cellSize already defined above)
+      const fallSpeed = 100; // pixels per second
+      pieceY += fallSpeed * d;
+      
+      // Find the bottom row of the piece
+      let bottomRow = 0;
+      for (let r = 0; r < fallingPiece.length; r++) {
+        for (let c = 0; c < fallingPiece[r].length; c++) {
+          if (fallingPiece[r][c]) {
+            bottomRow = Math.max(bottomRow, r);
+          }
+        }
+      }
+      
+      // Check if bottom of piece would go past screen bottom
+      const pieceBottomY = pieceY + (bottomRow + 1) * cellSize;
+      if (pieceBottomY >= H) {
+        // Snap to highest valid position
+        const maxValidY = H - (bottomRow + 1) * cellSize;
+        const snappedY = Math.floor(maxValidY / cellSize) * cellSize;
+        pieceY = snappedY;
+        lockPiece();
+      } else {
+        // Continuously check collision as piece falls (not just at grid boundaries)
+        const currentGridY = Math.floor(pieceY / cellSize) * cellSize;
+        const nextGridY = currentGridY + cellSize;
+        
+        // Check collision at the current position first
+        if (!canPlacePiece(pieceX, currentGridY, fallingPiece)) {
+          // Already colliding - try one cell up
+          const tryY = currentGridY - cellSize;
+          if (tryY >= 0 && canPlacePiece(pieceX, tryY, fallingPiece)) {
+            pieceY = tryY;
+          } else {
+            // Can't go up, lock at current position
+            pieceY = currentGridY;
+          }
+          lockPiece();
+        } else if (pieceY >= nextGridY) {
+          // Check if next position is valid (would collide with locked blocks or boundaries)
+          if (canPlacePiece(pieceX, nextGridY, fallingPiece)) {
+            pieceY = nextGridY;
+          } else {
+            // Can't move down - lock piece at current grid position
+            pieceY = currentGridY;
+            lockPiece();
+          }
+        }
+      }
+      
+    }
+
+    // Win condition
+    if (bricks.length === 0 && fallingPiece === null) {
+      gameOver = true;
+      add([
+        text("You Win!", { size: 32 }),
+        pos(W / 2, H / 2 - 20),
+        anchor("center"),
+        color(34, 197, 94),
+        z(20)
+      ]);
+      add([
+        text("Press Space to restart", { size: 16 }),
+        pos(W / 2, H / 2 + 20),
+        anchor("center"),
+        color(200, 200, 210),
+        z(20)
+      ]);
+    }
+  });
+
+  onDraw(() => {
+    // Draw falling piece
+    if (fallingPiece) {
+      const cellSize = BRICK_H;
+      for (let r = 0; r < fallingPiece.length; r++) {
+        for (let c = 0; c < fallingPiece[r].length; c++) {
+          if (fallingPiece[r][c]) {
+            drawRect({
+              pos: vec2(pieceX + c * cellSize, pieceY + r * cellSize),
+              width: cellSize - 2,
+              height: cellSize - 2,
+              color: rgb(147, 51, 234), // purple
+              outline: { width: 1, color: rgb(196, 181, 253) }
+            });
+          }
+        }
+      }
+    }
+  });
+
+  // Piece movement is now handled in onUpdate above for hold-to-move support
+
+  onKeyPress("space", () => {
+    if (gameOver) {
+      // Reset game
+      for (const brick of bricks) destroy(brick);
+      bricks = [];
+      if (ball) destroy(ball);
+      ball = null;
+      if (fallingPiece) fallingPiece = null;
+      destroyAll("locked");
+      lockedBlocks = [];
+      score = 0;
+      scoreLabel.text = "Score: 0";
+      gameOver = false;
+      createBricks();
+      createBall();
+      paddle.pos.x = W / 2 - PADDLE_W / 2;
+    } else if (fallingPiece) {
+      // Rotate piece
+      const rotated = rotatePiece(fallingPiece);
+      if (canPlacePiece(pieceX, pieceY, rotated)) {
+        fallingPiece = rotated;
+      }
+    }
+  });
+});
+
+go("game");
+</script>
+</body>
+</html>
