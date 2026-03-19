@@ -18,11 +18,11 @@
     "tags": ["solo", "classic"]
   },
   {
-    "id": "my-game",
+    "id": "arrow-shooter",
     "name": "Arrow Shooter",
     "description": "Shoot arrows at the red targets. WASD move, W jump, click-drag-release to aim (drag length = power).",
-    "path": "/games/my-game/index.html",
-    "thumbnail": "/games/my-game/thumbnail.png",
+    "path": "/games/arrow-shooter/index.html",
+    "thumbnail": "/games/arrow-shooter/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo"]
   }

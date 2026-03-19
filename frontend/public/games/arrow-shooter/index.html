@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Arrow Shooter</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+kaplay({
+  width: 800,
+  height: 500,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+const W = 800;
+const H = 500;
+const GROUND_Y = 440;
+const GROUND_H = 60;
+const GRAVITY = 1200;
+const JUMP_STRENGTH = 420;
+const PLAYER_SPEED = 280;
+const MIN_ARROW_POWER = 120;
+const MAX_ARROW_POWER = 700;
+const MIN_DRAG = 15;
+const TARGET_R = 14; // smaller target
+const ARROW_W = 28;
+const ARROW_H = 4;
+const ARROW_TIP_DIST = ARROW_W / 2; // local "tip" distance from the arrow center (px)
+const ARROW_STUCK_TTL = 10.0; // seconds (how long stuck arrows stay)
+const ARROW_STUCK_MARGIN_X = 1; // only stick if the tip is close enough to the platform
+const ARROW_STUCK_MARGIN_Y = 0.4; // how close we consider the tip "on top" (in px)
+const TARGET_MIN_X = 50;
+const TARGET_MAX_X = W - 50;
+const TARGET_MIN_Y = 60;
+const TARGET_MAX_Y = GROUND_Y - 60;
+const TARGET_BROWNIAN_ACCEL = 1800; // higher = more jittery (doubled for faster movement)
+const TARGET_BROWNIAN_DAMPING = 2.0; // higher = stops faster (reduced so it moves more)
+const ENEMY_SPEED = 80; // how fast enemy chases player (slower)
+const ENEMY_R = 22; // enemy size
+const ENEMY_JUMP_STRENGTH = 500; // enemy jump strength (higher than player)
+const ENEMY_SPAWN_INTERVAL = 10.0; // seconds between enemy spawns
+const ENEMY_SPAWN_FLASH_TIME = 3.0; // seconds to flash ground before enemy spawns
+const PLATFORM_FALL_THROUGH_TIME = 3.0; // seconds before player falls through platform
+const TARGET_BONUS_POINTS = 10; // bonus points for hitting target (on top of combo)
+
+const PLATFORMS = [
+  { x: 80, y: 380, w: 120, h: 16 },
+  { x: 320, y: 320, w: 100, h: 16 },
+  { x: 540, y: 380, w: 100, h: 16 },
+  { x: 180, y: 260, w: 90, h: 12 },
+  { x: 480, y: 280, w: 100, h: 12 },
+  { x: 650, y: 340, w: 80, h: 12 },
+];
+
+scene("game", () => {
+  let score = 0;
+  let combo = 0;
+  const arrows = [];
+  let velY = 0;
+  let crouching = false;
+  const standingH = 48;
+  const crouchH = 32;
+
+  const scoreLabel = add([
+    text("Score: 0", { size: 20 }),
+    pos(24, 24),
+    color(200, 200, 210),
+  ]);
+  const comboLabel = add([
+    text("", { size: 16 }),
+    pos(24, 48),
+    color(255, 200, 100),
+  ]);
+
+  const playerOval = add([
+    circle(20),
+    scale(1, 1.2),
+    pos(0, 0),
+    color(120, 140, 180),
+    anchor("center"),
+    "player",
+  ]);
+
+  let playerX = W / 2;
+  let playerY = GROUND_Y;
+  let playerDir = 1; // -1 = left, +1 = right
+  let platformStandTime = 0; // how long player has been on current platform
+  let currentPlatformIndex = -1; // which platform player is on (-1 = none)
+
+  let dragStart = null;
+  let dragCurrent = null;
+  let lastShotLine = null;
+  let lastShotLineFrames = 0;
+
+  onKeyDown("left", () => { playerDir = -1; if (!crouching) playerX -= PLAYER_SPEED * dt(); });
+  onKeyDown("right", () => { playerDir = 1; if (!crouching) playerX += PLAYER_SPEED * dt(); });
+  onKeyDown("a", () => { playerDir = -1; if (!crouching) playerX -= PLAYER_SPEED * dt(); });
+  onKeyDown("d", () => { playerDir = 1; if (!crouching) playerX += PLAYER_SPEED * dt(); });
+  let grounded = false;
+  onKeyDown("up", () => {
+    if (grounded) velY = -JUMP_STRENGTH;
+  });
+  onKeyDown("w", () => {
+    if (grounded) velY = -JUMP_STRENGTH;
+  });
+  onKeyDown("down", () => { crouching = true; });
+  onKeyDown("s", () => { crouching = true; });
+  onKeyRelease("down", () => { crouching = false; });
+  onKeyRelease("s", () => { crouching = false; });
+
+  function shootFromDrag(start, end) {
+    let dx = start.x - end.x;
+    let dy = start.y - end.y;
+    const len = Math.hypot(dx, dy);
+    if (len < MIN_DRAG) return;
+    dx /= len;
+    dy /= len;
+    const power = Math.min(MAX_ARROW_POWER, Math.max(MIN_ARROW_POWER, len * 2.2));
+    const angle = Math.atan2(dy, dx);
+    const h = crouching ? crouchH : standingH;
+    const py = playerY - h / 2;
+    arrows.push({
+      x: playerX,
+      y: py,
+      vx: dx * power,
+      vy: dy * power,
+      angle: angle,
+      stuck: false,
+      stuckAngle: null,
+    });
+  }
+
+  onMousePress("left", () => {
+    const mp = mousePos();
+    dragStart = { x: mp.x, y: mp.y };
+    dragCurrent = { x: mp.x, y: mp.y };
+  });
+  onMouseMove(() => {
+    if (dragStart) {
+      const mp = mousePos();
+      dragCurrent = { x: mp.x, y: mp.y };
+    }
+  });
+  onMouseRelease("left", () => {
+    if (dragStart && dragCurrent) {
+      lastShotLine = { start: { ...dragStart }, end: { ...dragCurrent } };
+      lastShotLineFrames = 18;
+      shootFromDrag(dragStart, dragCurrent);
+    }
+    dragStart = null;
+    dragCurrent = null;
+  });
+
+  let target = add([
+    circle(TARGET_R),
+    pos(Math.random() * (W - 100) + 50, Math.random() * (GROUND_Y - 120) + 40),
+    color(220, 100, 100),
+    anchor("center"),
+    "target",
+  ]);
+  let targetVel = { x: 0, y: 0 };
+
+  // Enemies array - multiple enemies can spawn
+  const enemies = [];
+  let enemySpawnTimer = 0;
+  const enemySpawnFlashes = []; // { x, timeLeft, ready: false }
+  
+  // Helper function to create a new enemy
+  function spawnEnemy(spawnX) {
+    const enemyObj = add([
+      circle(ENEMY_R),
+      pos(spawnX, GROUND_Y),
+      color(200, 50, 50),
+      anchor("center"),
+      "enemy",
+    ]);
+    enemies.push({
+      obj: enemyObj,
+      x: spawnX,
+      y: GROUND_Y,
+      velY: 0,
+    });
+  }
+  
+  // Spawn first enemy with flash
+  const firstSpawnX = Math.random() * (W - 200) + 100;
+  enemySpawnFlashes.push({ x: firstSpawnX, timeLeft: ENEMY_SPAWN_FLASH_TIME, ready: false });
+
+  onUpdate(() => {
+    const h = crouching ? crouchH : standingH;
+    velY += GRAVITY * dt();
+    playerY += velY * dt();
+
+    grounded = false;
+    let landed = false;
+    let onPlatformIndex = -1;
+    
+    // Check if player is on a platform
+    for (let i = 0; i < PLATFORMS.length; i++) {
+      const p = PLATFORMS[i];
+      if (velY >= 0 && playerY >= p.y - 2 && playerY <= p.y + 25 &&
+          playerX >= p.x - 20 && playerX <= p.x + p.w + 20) {
+        onPlatformIndex = i;
+        
+        // If this is the same platform as before, increment timer
+        if (i === currentPlatformIndex) {
+          platformStandTime += dt();
+        } else {
+          // New platform - reset timer
+          platformStandTime = 0;
+          currentPlatformIndex = i;
+        }
+        
+        // Only land if we haven't been standing for 3+ seconds AND not crouching
+        // Crouching lets you fall through immediately
+        if (platformStandTime < PLATFORM_FALL_THROUGH_TIME && !crouching) {
+          playerY = p.y;
+          velY = 0;
+          landed = true;
+          grounded = true;
+        }
+        // If timer >= 3 seconds OR crouching, we fall through (don't set landed/grounded)
+        break;
+      }
+    }
+    
+    // If not on any platform, reset timer
+    if (onPlatformIndex === -1) {
+      platformStandTime = 0;
+      currentPlatformIndex = -1;
+    }
+    
+    if (!landed && playerY > GROUND_Y) {
+      playerY = GROUND_Y;
+      velY = 0;
+      grounded = true;
+    }
+    if (playerX >= W) playerX -= W;
+    else if (playerX < 0) playerX += W;
+
+    playerOval.pos.x = playerX;
+    playerOval.pos.y = playerY - h / 2;
+
+    if (lastShotLineFrames > 0) lastShotLineFrames--;
+
+    // Spawn new enemy every 10 seconds (with flash warning)
+    enemySpawnTimer += dt();
+    if (enemySpawnTimer >= ENEMY_SPAWN_INTERVAL) {
+      enemySpawnTimer = 0;
+      const spawnX = Math.random() * (W - 200) + 100;
+      enemySpawnFlashes.push({ x: spawnX, timeLeft: ENEMY_SPAWN_FLASH_TIME, ready: false });
+    }
+    
+    // Update spawn flash timers and spawn enemies when ready
+    for (let i = enemySpawnFlashes.length - 1; i >= 0; i--) {
+      const flash = enemySpawnFlashes[i];
+      if (flash.timeLeft > 0) {
+        flash.timeLeft -= dt();
+        if (flash.timeLeft <= 0 && !flash.ready) {
+          spawnEnemy(flash.x);
+          flash.ready = true;
+          // Keep flash for a tiny bit after spawn
+          flash.timeLeft = 0.1;
+        }
+      } else {
+        // Remove flash after spawn
+        enemySpawnFlashes.splice(i, 1);
+      }
+    }
+
+    // Brownian motion: random acceleration + damping.
+    {
+      const d = dt();
+      const ax = (Math.random() - 0.5) * TARGET_BROWNIAN_ACCEL;
+      const ay = (Math.random() - 0.5) * TARGET_BROWNIAN_ACCEL;
+      targetVel.x += ax * d;
+      targetVel.y += ay * d;
+
+      const damp = Math.max(0, 1 - TARGET_BROWNIAN_DAMPING * d);
+      targetVel.x *= damp;
+      targetVel.y *= damp;
+
+      let nextX = target.pos.x + targetVel.x * d;
+      let nextY = target.pos.y + targetVel.y * d;
+
+      if (nextX < TARGET_MIN_X) { nextX = TARGET_MIN_X; targetVel.x *= -0.6; }
+      if (nextX > TARGET_MAX_X) { nextX = TARGET_MAX_X; targetVel.x *= -0.6; }
+      if (nextY < TARGET_MIN_Y) { nextY = TARGET_MIN_Y; targetVel.y *= -0.6; }
+      if (nextY > TARGET_MAX_Y) { nextY = TARGET_MAX_Y; targetVel.y *= -0.6; }
+
+      target.pos.x = nextX;
+      target.pos.y = nextY;
+    }
+
+    // Update all enemies
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      const d = dt();
+      
+      // Enemy gravity and platform collision (same as player)
+      e.velY += GRAVITY * d;
+      e.y += e.velY * d;
+
+      let enemyGrounded = false;
+      let enemyLanded = false;
+      for (const p of PLATFORMS) {
+        if (e.velY >= 0 && e.y >= p.y - 2 && e.y <= p.y + 25 &&
+            e.x >= p.x - ENEMY_R && e.x <= p.x + p.w + ENEMY_R) {
+          e.y = p.y;
+          e.velY = 0;
+          enemyLanded = true;
+          enemyGrounded = true;
+          break;
+        }
+      }
+      if (!enemyLanded && e.y > GROUND_Y) {
+        e.y = GROUND_Y;
+        e.velY = 0;
+        enemyGrounded = true;
+      }
+
+      // Enemy jump logic: jump if player is above and there's a platform to reach
+      if (enemyGrounded) {
+        const playerCenterY = playerY - h / 2;
+        const enemyCenterY = e.y - ENEMY_R;
+        const playerAbove = playerCenterY < enemyCenterY - 30; // player is significantly above
+        
+        if (playerAbove) {
+          // Check if there's a platform above that we need to jump to
+          let shouldJump = false;
+          for (const p of PLATFORMS) {
+            const platformAbove = p.y < e.y - 20; // platform is above enemy
+            const platformReachable = Math.abs(e.x - (p.x + p.w / 2)) < p.w + 40; // platform is near horizontally
+            if (platformAbove && platformReachable) {
+              shouldJump = true;
+              break;
+            }
+          }
+          
+          // Also jump if player is directly above on a platform
+          if (!shouldJump && Math.abs(playerX - e.x) < 50 && playerAbove) {
+            shouldJump = true;
+          }
+          
+          if (shouldJump) {
+            e.velY = -ENEMY_JUMP_STRENGTH;
+          }
+        }
+      }
+
+      // Chase player horizontally and vertically
+      const dx = playerX - e.x;
+      const dy = (playerY - h / 2) - (e.y - ENEMY_R);
+      const dist = Math.hypot(dx, dy);
+      
+      if (dist > 0.1) {
+        const moveX = (dx / dist) * ENEMY_SPEED * d;
+        e.x += moveX;
+      }
+
+      e.obj.pos.x = e.x;
+      e.obj.pos.y = e.y - ENEMY_R;
+
+      // Check if enemy touches player = game over
+      const playerCenterY = playerY - h / 2;
+      const enemyCenterY = e.y - ENEMY_R;
+      const playerDist = Math.hypot(playerX - e.x, playerCenterY - enemyCenterY);
+      if (playerDist < 20 + ENEMY_R) {
+        // Game over - show end screen
+        go("gameover", score);
+      }
+    }
+
+    for (let i = arrows.length - 1; i >= 0; i--) {
+      const a = arrows[i];
+      const d = dt();
+
+      if (!a.stuck) {
+        // Track previous motion so we can detect the platform "top crossing" using the arrow tip.
+        const prevX = a.x;
+        const prevY = a.y;
+        const prevVx = a.vx;
+        const prevVy = a.vy;
+
+        a.x = a.x + a.vx * d;
+        a.y = a.y + a.vy * d;
+        a.vy = a.vy + GRAVITY * d;
+
+        // Arrow points along its velocity direction.
+        const prevTheta = Math.atan2(prevVy, prevVx);
+        const theta = Math.atan2(a.vy, a.vx);
+
+        const prevTipX = prevX + ARROW_TIP_DIST * Math.cos(prevTheta);
+        const prevTipY = prevY + ARROW_TIP_DIST * Math.sin(prevTheta);
+        const tipX = a.x + ARROW_TIP_DIST * Math.cos(theta);
+        const tipY = a.y + ARROW_TIP_DIST * Math.sin(theta);
+
+        // Stick only when the TIP comes from above and crosses the platform top surface.
+        for (const p of PLATFORMS) {
+          const platformTopY = p.y;
+          const withinX =
+            tipX >= p.x - ARROW_STUCK_MARGIN_X &&
+            tipX <= p.x + p.w + ARROW_STUCK_MARGIN_X;
+
+          const tipMovingDown = prevVy >= 0;
+          const comingFromAbove =
+            prevTipY < platformTopY - 0.25 &&
+            tipY >= platformTopY - ARROW_STUCK_MARGIN_Y;
+
+          if (tipMovingDown && comingFromAbove && withinX) {
+            // Arrow stuck on platform = miss, reset combo
+            if (combo > 0) {
+              combo = 0;
+              comboLabel.text = "";
+            }
+            
+            a.stuckAngle = theta;
+            a.vx = 0;
+            a.vy = 0;
+            a.stuck = true;
+            a.stuckAge = 0;
+
+            // Reposition the arrow center so its tip rests on the platform top.
+            a.y = platformTopY - ARROW_TIP_DIST * Math.sin(theta);
+
+            // Keep the tip roughly over the platform width.
+            const currentTipX = a.x + ARROW_TIP_DIST * Math.cos(theta);
+            const clampedTipX = Math.min(Math.max(currentTipX, p.x), p.x + p.w);
+            a.x += clampedTipX - currentTipX;
+
+            break;
+          }
+        }
+        
+        // Also stick to ground when arrow tip hits ground
+        const tipMovingDown = prevVy >= 0;
+        const comingFromAbove = prevTipY < GROUND_Y - 0.25;
+        const hittingGround = tipY >= GROUND_Y - ARROW_STUCK_MARGIN_Y;
+        
+        if (tipMovingDown && comingFromAbove && hittingGround) {
+          // Arrow stuck on ground = miss, reset combo
+          if (combo > 0) {
+            combo = 0;
+            comboLabel.text = "";
+          }
+          
+          a.stuckAngle = theta;
+          a.vx = 0;
+          a.vy = 0;
+          a.stuck = true;
+          a.stuckAge = 0;
+          
+          // Reposition arrow so tip rests on ground
+          a.y = GROUND_Y - ARROW_TIP_DIST * Math.sin(theta);
+        }
+      } else {
+        // Stuck lifetime so arrows eventually disappear.
+        a.stuckAge = (a.stuckAge || 0) + d;
+        if (a.stuckAge > ARROW_STUCK_TTL) {
+          // Arrow expired = miss, reset combo
+          if (combo > 0) {
+            combo = 0;
+            comboLabel.text = "";
+          }
+          arrows.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Track if arrow hit anything this frame
+      let arrowHit = false;
+
+      // Check enemy collision if arrow is NOT stuck
+      if (!a.stuck) {
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          const e = enemies[j];
+          const enemyCenterY = e.y - ENEMY_R;
+          if (a.x > e.x - ENEMY_R && a.x < e.x + ENEMY_R &&
+              a.y > enemyCenterY - ENEMY_R && a.y < enemyCenterY + ENEMY_R) {
+            // Hit enemy: 1 point + combo
+            arrowHit = true;
+            combo++;
+            const comboPoints = combo;
+            score += comboPoints;
+            scoreLabel.text = "Score: " + score;
+            comboLabel.text = "Combo x" + combo + " (+" + comboPoints + ")";
+            
+            arrows.splice(i, 1);
+            destroy(e.obj);
+            enemies.splice(j, 1);
+            break;
+          }
+        }
+      }
+      
+      // Only check target collision if arrow is NOT stuck and didn't hit enemy
+      if (!a.stuck && !arrowHit &&
+          a.x > target.pos.x - TARGET_R &&
+          a.x < target.pos.x + TARGET_R &&
+          a.y > target.pos.y - TARGET_R &&
+          a.y < target.pos.y + TARGET_R
+      ) {
+        // Target hit: 10 bonus points + combo
+        arrowHit = true;
+        combo++;
+        const comboPoints = combo;
+        const totalPoints = TARGET_BONUS_POINTS + comboPoints;
+        score += totalPoints;
+        scoreLabel.text = "Score: " + score;
+        comboLabel.text = "Combo x" + combo + " (+" + totalPoints + ")";
+        
+        // Show "+10" text on target briefly
+        const bonusText = add([
+          text("+10", { size: 24 }),
+          pos(target.pos.x, target.pos.y - 20),
+          anchor("center"),
+          color(255, 255, 100),
+        ]);
+        setTimeout(() => destroy(bonusText), 1000);
+        
+        arrows.splice(i, 1);
+        destroy(target);
+        target = add([
+          circle(TARGET_R),
+          pos(Math.random() * (W - 100) + 50, Math.random() * (GROUND_Y - 120) + 40),
+          color(220, 100, 100),
+          anchor("center"),
+          "target",
+        ]);
+        targetVel = { x: 0, y: 0 };
+      }
+
+      // If arrow went off-screen without hitting anything = miss, reset combo
+      if (!a.stuck && !arrowHit && (a.x < -50 || a.x > W + 50 || a.y < -50 || a.y > H + 50)) {
+        if (combo > 0) {
+          combo = 0;
+          comboLabel.text = "";
+        }
+        arrows.splice(i, 1);
+        continue;
+      }
+    }
+  });
+
+  onDraw(() => {
+    if (dragStart && dragCurrent) {
+      drawLine({
+        p1: vec2(dragStart.x, dragStart.y),
+        p2: vec2(dragCurrent.x, dragCurrent.y),
+        width: 2,
+        color: rgb(100, 200, 255),
+        opacity: 0.15,
+      });
+    } else if (lastShotLine && lastShotLineFrames > 0) {
+      drawLine({
+        p1: vec2(lastShotLine.start.x, lastShotLine.start.y),
+        p2: vec2(lastShotLine.end.x, lastShotLine.end.y),
+        width: 2,
+        color: rgb(100, 200, 255),
+        opacity: 0.15,
+      });
+    }
+
+    for (let i = 0; i < PLATFORMS.length; i++) {
+      const p = PLATFORMS[i];
+      
+      // Flash effect: if this is the platform the player is standing on, flash every second
+      let platformColor = rgb(70, 95, 55);
+      let topColor = rgb(85, 115, 65);
+      
+      if (i === currentPlatformIndex && platformStandTime < PLATFORM_FALL_THROUGH_TIME) {
+        const secondsOnPlatform = Math.floor(platformStandTime);
+        // Flash on seconds 0, 1, 2 (first, second, third flash)
+        // Use a pulsing effect: bright when in the first half of each second
+        const withinSecond = platformStandTime - secondsOnPlatform;
+        if (withinSecond < 0.5) {
+          // Bright flash color (yellow/orange)
+          platformColor = rgb(200, 180, 60);
+          topColor = rgb(220, 200, 80);
+        }
+      }
+      
+      drawRect({
+        pos: vec2(p.x, p.y),
+        width: p.w,
+        height: p.h,
+        color: platformColor,
+      });
+      drawRect({
+        pos: vec2(p.x, p.y),
+        width: p.w,
+        height: 4,
+        color: topColor,
+      });
+    }
+    
+    drawRect({
+      pos: vec2(0, GROUND_Y),
+      width: W,
+      height: GROUND_H,
+      color: rgb(60, 80, 50),
+    });
+    drawRect({
+      pos: vec2(0, GROUND_Y),
+      width: W,
+      height: 4,
+      color: rgb(80, 100, 70),
+    });
+    
+    // Draw enemy spawn flashes on ground (draw AFTER ground so it's visible on top)
+    for (const flash of enemySpawnFlashes) {
+      if (flash.timeLeft > 0) {
+        // Pulsing effect: faster pulse as time runs out
+        const pulseSpeed = 15 - (ENEMY_SPAWN_FLASH_TIME - flash.timeLeft) * 3;
+        const flashAlpha = Math.sin(flash.timeLeft * pulseSpeed) * 0.5 + 0.5; // pulsing 0-1
+        drawRect({
+          pos: vec2(flash.x - 30, GROUND_Y),
+          width: 60,
+          height: GROUND_H,
+          color: rgb(255, 80, 80),
+          opacity: flashAlpha * 0.8,
+        });
+      }
+    }
+
+    // Player face (eyes) + bow, oriented by last horizontal movement.
+    {
+      const px = playerOval.pos.x;
+      const py = playerOval.pos.y;
+      const dir = playerDir;
+
+      pushTransform();
+      pushTranslate(px, py);
+
+      const eyeY = -10 + (crouching ? 6 : 0);
+      const eyeDX = 8;
+      const pupilDX = dir * 3;
+
+      // Eye whites
+      drawRect({ pos: vec2(-eyeDX, eyeY), width: 6, height: 5, color: rgb(235, 235, 245) });
+      drawRect({ pos: vec2(eyeDX, eyeY), width: 6, height: 5, color: rgb(235, 235, 245) });
+
+      // Pupils look in the direction he's moving
+      drawRect({ pos: vec2(-eyeDX + pupilDX, eyeY), width: 3, height: 3, color: rgb(25, 25, 40) });
+      drawRect({ pos: vec2(eyeDX + pupilDX, eyeY), width: 3, height: 3, color: rgb(25, 25, 40) });
+
+      popTransform();
+
+      // Bow flips/rotates with direction.
+      pushTransform();
+      pushTranslate(px, py);
+      pushRotate(dir === 1 ? 0 : 180);
+
+      const bowY = -8 + (crouching ? 6 : 0);
+      // Bow handle
+      drawRect({ pos: vec2(16, bowY), width: 18, height: 4, color: rgb(120, 75, 30) });
+      // Bow tips
+      drawRect({ pos: vec2(27, bowY - 1), width: 5, height: 3, color: rgb(170, 120, 50) });
+      drawRect({ pos: vec2(27, bowY + 1), width: 5, height: 3, color: rgb(170, 120, 50) });
+      // Simple "string" lines
+      drawLine({ p1: vec2(18, bowY - 7), p2: vec2(18, bowY + 7), width: 2, color: rgb(220, 180, 90) });
+
+      popTransform();
+    }
+
+    // Draw enemy faces (eyes + angry eyebrows)
+    for (const e of enemies) {
+      const ex = e.obj.pos.x;
+      const ey = e.obj.pos.y;
+      
+      pushTransform();
+      pushTranslate(ex, ey);
+      
+      // Determine direction enemy is facing (toward player)
+      const enemyDir = (playerX - e.x) >= 0 ? 1 : -1;
+      const eyeY = -ENEMY_R + 4;
+      const eyeDX = 6;
+      const pupilDX = enemyDir * 2; // eyes look toward player
+      
+      // Eye whites
+      drawRect({ pos: vec2(-eyeDX, eyeY), width: 5, height: 4, color: rgb(240, 240, 250) });
+      drawRect({ pos: vec2(eyeDX, eyeY), width: 5, height: 4, color: rgb(240, 240, 250) });
+      
+      // Pupils (look toward player)
+      drawRect({ pos: vec2(-eyeDX + pupilDX, eyeY), width: 2, height: 2, color: rgb(20, 20, 30) });
+      drawRect({ pos: vec2(eyeDX + pupilDX, eyeY), width: 2, height: 2, color: rgb(20, 20, 30) });
+      
+      // Angry eyebrows (diagonal lines above eyes)
+      const browY = eyeY - 4;
+      drawLine({
+        p1: vec2(-eyeDX - 2, browY),
+        p2: vec2(-eyeDX + 2, browY - 2),
+        width: 2,
+        color: rgb(150, 30, 30),
+      });
+      drawLine({
+        p1: vec2(eyeDX - 2, browY - 2),
+        p2: vec2(eyeDX + 2, browY),
+        width: 2,
+        color: rgb(150, 30, 30),
+      });
+      
+      popTransform();
+    }
+
+    for (const a of arrows) {
+      const ax = (a.stuck && a.stuckAngle != null) ? a.stuckAngle : Math.atan2(a.vy, a.vx);
+      pushTransform();
+      pushTranslate(a.x, a.y);
+      pushRotate(ax * 180 / Math.PI);
+      drawRect({ pos: vec2(-14, -2), width: 28, height: 4, color: rgb(160, 120, 70) });
+      drawTriangle({
+        p1: vec2(24, 0),
+        p2: vec2(14, -6),
+        p3: vec2(14, 6),
+        color: rgb(140, 140, 150),
+      });
+      drawRect({ pos: vec2(-20, -6), width: 6, height: 6, color: rgb(180, 60, 60) });
+      drawRect({ pos: vec2(-20, 0), width: 6, height: 6, color: rgb(180, 60, 60) });
+      popTransform();
+    }
+  });
+
+  add([
+    text("WASD move, W/Up jump, S/Down crouch. Click-drag-release to shoot (power = drag length)", { size: 12 }),
+    pos(W / 2, H - 8),
+    anchor("center"),
+    color(180, 180, 190),
+    opacity(0.7),
+  ]);
+});
+
+// Global best score (lost on reload)
+let bestScore = 0;
+
+// Start screen
+scene("start", () => {
+  add([
+    text("Arrow Shooter", { size: 48 }),
+    pos(W / 2, H / 2 - 80),
+    anchor("center"),
+    color(255, 255, 255),
+  ]);
+  
+  add([
+    text("Click or Press Space to Start", { size: 20 }),
+    pos(W / 2, H / 2 + 20),
+    anchor("center"),
+    color(200, 200, 210),
+  ]);
+  
+  if (bestScore > 0) {
+    add([
+      text("Best Score: " + bestScore, { size: 18 }),
+      pos(W / 2, H / 2 + 60),
+      anchor("center"),
+      color(255, 200, 100),
+    ]);
+  }
+  
+  onKeyPress("space", () => go("game"));
+  onClick(() => go("game"));
+});
+
+// End game screen
+scene("gameover", (finalScore) => {
+  if (finalScore > bestScore) {
+    bestScore = finalScore;
+  }
+  
+  add([
+    text("Game Over!", { size: 48 }),
+    pos(W / 2, H / 2 - 100),
+    anchor("center"),
+    color(255, 100, 100),
+  ]);
+  
+  add([
+    text("Final Score: " + finalScore, { size: 32 }),
+    pos(W / 2, H / 2 - 30),
+    anchor("center"),
+    color(255, 255, 255),
+  ]);
+  
+  if (bestScore > 0) {
+    add([
+      text("Best Score: " + bestScore, { size: 24 }),
+      pos(W / 2, H / 2 + 20),
+      anchor("center"),
+      color(255, 200, 100),
+    ]);
+  }
+  
+  add([
+    text("Click or Press Space for New Game", { size: 20 }),
+    pos(W / 2, H / 2 + 80),
+    anchor("center"),
+    color(200, 200, 210),
+  ]);
+  
+  onKeyPress("space", () => go("game"));
+  onClick(() => go("game"));
+});
+
+go("start");
+</script>
+</body>
+</html>
