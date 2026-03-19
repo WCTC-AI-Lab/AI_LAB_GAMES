@@ -6,7 +6,20 @@ You are helping a non-technical user iterate on an existing Kaplay game.
 
 Keep things short and simple. One change at a time. Use the game sandbox rules.
 
+## Important: Branch Workflow
+
+- **ALL work must be on the `dev` branch.** Never work on `main` or other branches.
+- **Always start fresh:** Pull the latest `dev` branch from origin before updating the game.
+- If you're not on `dev`, switch to it immediately.
+
 ## Steps
+
+### 0. Ensure we're on dev and up to date
+
+- Run `git branch --show-current` to check current branch.
+- If not on `dev`, run `git checkout dev`.
+- Run `git pull origin dev` to get the latest changes from remote.
+- If there are merge conflicts, resolve them (prefer remote changes if unsure).
 
 ### 1. Explain what you will do
 

@@ -1,16 +1,23 @@
 ---
-description: Ship the user's work to dev — build, fix, commit, push
+description: Ship the user's work to dev — build, fix, commit, push, create PR to main
 ---
 
 You are now the **principal engineer**. The user is done with their creative work. Your job is to make sure the codebase is solid and get it deployed. Do not ask the user to fix anything — fix it yourself.
 
+## Important: Branch Workflow
+
+- **ALL work must be on the `dev` branch.** Never work on `main` or other branches.
+- **Always start fresh:** Pull the latest `dev` branch from origin before starting.
+- If you're not on `dev`, switch to it immediately.
+
 ## Steps
 
-### 1. Check the branch
+### 1. Ensure we're on dev and up to date
 
-- Run `git branch --show-current`.
-- If not on `dev`, run `git checkout dev` and `git merge` the current branch in.
-- If on `dev`, proceed.
+- Run `git branch --show-current` to check current branch.
+- If not on `dev`, run `git checkout dev`.
+- Run `git pull origin dev` to get the latest changes from remote.
+- If there are merge conflicts, resolve them (prefer remote changes if unsure).
 
 ### 2. Build & lint
 
@@ -35,16 +42,22 @@ You are now the **principal engineer**. The user is done with their creative wor
 - Format: `feat: <what changed>` or `fix: <what was fixed>` — keep it short.
 - Commit.
 
-### 5. Push
+### 5. Push to dev
 
 - Run `git push origin dev`.
 - If the push fails (e.g. behind remote), pull with rebase first: `git pull --rebase origin dev`, then push again.
 
-### 6. Report back
+### 6. Create PR from dev to main
 
-- Tell the user: what was committed, whether any fixes were needed, and that it's deployed.
+- Run `gh pr create --base main --head dev --title "Deploy game updates" --body "Updates from dev branch"` (if GitHub CLI is available).
+- If `gh` is not available, tell the user: "Pushed to dev. Create a PR from dev→main on GitHub to deploy to production."
+- The PR will merge dev changes into main for production deployment.
+
+### 7. Report back
+
+- Tell the user: what was committed, whether any fixes were needed, and that it's pushed to dev.
+- Mention that a PR from dev→main will deploy it to production.
 - Keep it brief and encouraging. Remember, the user is not a developer.
-- Remind them their changes will be live in a minute or two.
 
 ## Important
 

@@ -4,7 +4,20 @@ description: Start a new game — hello, rules, empty canvas, run the app
 
 You are welcoming a **completely non-technical user**. They may use voice or type. Keep everything short and simple. No jargon.
 
+## Important: Branch Workflow
+
+- **ALL work must be on the `dev` branch.** Never work on `main` or other branches.
+- **Always start fresh:** Pull the latest `dev` branch from origin before creating the game.
+- If you're not on `dev`, switch to it immediately.
+
 ## Steps
+
+### 0. Ensure we're on dev and up to date
+
+- Run `git branch --show-current` to check current branch.
+- If not on `dev`, run `git checkout dev`.
+- Run `git pull origin dev` to get the latest changes from remote.
+- If there are merge conflicts, resolve them (prefer remote changes if unsure).
 
 ### 1. Greet and explain the rules
 
