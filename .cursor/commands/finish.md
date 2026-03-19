@@ -1,16 +1,23 @@
 ---
-description: Ship the user's work to dev — build, fix, commit, push
+description: Ship the user's work to dev — build, fix, commit, push, create PR to main
 ---
 
 You are now the **principal engineer**. The user is done with their creative work. Your job is to make sure the codebase is solid and get it deployed. Do not ask the user to fix anything — fix it yourself.
 
+## Important: Branch Workflow
+
+- **ALL work must be on the `dev` branch.** Never work on `main` or other branches.
+- **Always start fresh:** Pull the latest `dev` branch from origin before starting.
+- If you're not on `dev`, switch to it immediately.
+
 ## Steps
 
-### 1. Check the branch
+### 1. Ensure we're on dev and up to date
 
-- Run `git branch --show-current`.
-- If not on `dev`, run `git checkout dev` and `git merge` the current branch in.
-- If on `dev`, proceed.
+- Run `git branch --show-current` to check current branch.
+- If not on `dev`, run `git checkout dev`.
+- Run `git pull origin dev` to get the latest changes from remote.
+- If there are merge conflicts, resolve them (prefer remote changes if unsure).
 
 ### 2. Build & lint
 
@@ -35,16 +42,36 @@ You are now the **principal engineer**. The user is done with their creative wor
 - Format: `feat: <what changed>` or `fix: <what was fixed>` — keep it short.
 - Commit.
 
-### 5. Push
+### 5. Push to dev
 
 - Run `git push origin dev`.
 - If the push fails (e.g. behind remote), pull with rebase first: `git pull --rebase origin dev`, then push again.
 
-### 6. Report back
+### 6. Create PR from dev to main using GitHub MCP
 
-- Tell the user: what was committed, whether any fixes were needed, and that it's deployed.
+- **GitHub MCP is available** — use it to create the pull request.
+- **How to find GitHub MCP tools:**
+  - GitHub MCP server provides tools for creating pull requests. These tools should be available if the GitHub MCP server is configured in Cursor.
+  - Look for tools with names like `create_pull_request`, `github_create_pull_request`, or similar GitHub-related tool names.
+  - The tools are provided by the GitHub MCP server and should appear in the available tools list when the server is properly configured.
+  - If you cannot find GitHub MCP tools by name, try using them directly by attempting to create a PR - the tools may be available but not obviously named.
+- **Using GitHub MCP:**
+  - Use the GitHub MCP tool to create a PR from `dev` → `main`.
+  - Repository: `jroberts-fellow/AI_LAB_GAMES` (from `git remote -v`)
+  - Title: "Deploy game updates"
+  - Body: "Updates from dev branch"
+  - Base branch: `main`
+  - Head branch: `dev`
+- **Fallback options if GitHub MCP tools are not accessible:**
+  - Try `gh pr create --base main --head dev --title "Deploy game updates" --body "Updates from dev branch"` (if GitHub CLI is available).
+  - If neither works, tell the user: "Pushed to dev. Create a PR from dev→main on GitHub to deploy to production."
+- The PR will merge dev changes into main for production deployment.
+
+### 7. Report back
+
+- Tell the user: what was committed, whether any fixes were needed, and that it's pushed to dev.
+- Mention that a PR from dev→main will deploy it to production.
 - Keep it brief and encouraging. Remember, the user is not a developer.
-- Remind them their changes will be live in a minute or two.
 
 ## Important
 
