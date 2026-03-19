@@ -19,35 +19,67 @@ You are welcoming a **completely non-technical user**. They may use voice or typ
 - Run `git pull origin dev` to get the latest changes from remote.
 - If there are merge conflicts, resolve them (prefer remote changes if unsure).
 
-### 1. Greet and explain the rules
+### 1. Greet and set expectations
 
 Say something like (adjust to sound natural):
 
-> Hi. You're making a game. Here's the only rule: **everything has to fit on one screen** — no scrolling, no levels, just one box. Think old-school arcade: Pong, Snake, Breakout. Tell me what you want and I'll build it.
+> Hey! You're about to make a game. Here's how this works:
+>
+> **The only rule:** everything fits on one screen — no scrolling, no levels, just one box. Think old-school arcade.
+>
+> **Three tips to have the most fun:**
+>
+> 1. **Always click "Run" and let me keep going.** When you see permission prompts or "allow" buttons, just click them. Let me cook.
+> 2. **Start simple, add one thing at a time.** You do NOT need a complete idea. Start with something like:
+>    - *"A guy that walks around on the ground"*
+>    - *"A rocket ship that goes up and down with gravity"*
+>    - *"A tank that drives around from above"*
+>    - *"Start with Pac-Man and add weird stuff to it"*
+>    Then just tell me one new idea whenever you think of it.
+> 3. **If something looks wrong, just say so.** Tell me "the player falls through the floor" or "it's too fast" and I'll fix it right away.
+>
+> The loop is: **I build → you look → you tell me what's next → repeat.**
+>
+> Ready? What do you want to make?
 
 ### 2. Create a new empty game
 
-- If they already said a name (e.g. "space shooter"), use that. Slugify: "space shooter" → `space-shooter`.
-- If not, use `my-game`.
-- Create `frontend/public/games/{id}/index.html`. Copy the structure from `snake/index.html` or `pong/index.html`: same `<!DOCTYPE>`, `<style>`, `body`/`canvas` CSS, and `<script src="../_lib/kaplay.js">`. Inside the script:
+- If they already said a name or concept (e.g. "space shooter"), slugify it: "space shooter" → `space-shooter`.
+- If not, use `my-game` as a temporary slug (it gets renamed when they `/finish`).
+- Create `frontend/public/games/{id}/index.html`. Copy the structure from an existing game: same `<!DOCTYPE>`, `<style>`, `body`/`canvas` CSS, and `<script src="../_lib/kaplay.js">`. Inside the script:
   - `kaplay({ width: 440, height: 440, background: [15, 23, 42], crisp: true });`
   - `scene("game", () => { add([text("Your game", { size: 24 }), pos(220, 220), anchor("center"), color(245,245,245)]); add([text("Score: 0", { size: 16 }), pos(20, 20), color(200,200,210)]); });`
   - `go("game");`
 - Add the game to `frontend/public/games/games.json` (id, name, description, path, author, tags).
 
-### 3. Verify and run the app
+### 3. Build and start the dev server
 
 - Run `cd frontend && npm run build` first. If it fails, fix the errors and rebuild. Do not tell the user their game is ready until the build passes.
 - Then run `cd frontend && npm run dev` **in the background**.
-- If the dev server errors (e.g. port in use), say the app might already be running and they should look for a URL in another terminal.
+- If the dev server errors (e.g. port in use), check for an already-running dev server in the terminal output and use that URL.
 
-### 4. Point them at the browser
+### 4. Open the game in the Cursor browser
 
-Say something like:
+**This is critical.** The user needs to see their game RIGHT NEXT to the chat — in Cursor's built-in browser, NOT an external browser.
 
-> Your game is ready. **Look at the terminal** — you'll see a link like `http://localhost:5173`. **Ctrl+click it** (or Cmd+click on Mac) to open it. You'll see your game in the list. Tell me what you want — with your voice or by typing — and I'll change it. When you're happy, type **/finish** and I'll ship it.
+- Get the dev server URL (typically `http://localhost:5173`).
+- The game's direct URL is: `http://localhost:5173/games/{id}/index.html`
+- Put the clickable link in your chat message. When the user clicks it, Cursor opens it in the built-in Simple Browser panel next to the chat.
+- Say something like:
 
-### 5. Keep it light
+> Your game is ready! **Click this link to open it right next to our chat:**
+>
+> http://localhost:5173/games/{id}/index.html
+>
+> ⚠️ **Every time I make a change, you need to refresh that game page** (click the refresh button or Ctrl+R in the game panel). I'll remind you each time.
+>
+> What should we add first?
 
-- Don't overload them. One screen, one box, tell me what you want, /finish when done.
-- If they ask "what can I make?", give 2–3 quick examples: "A game where you dodge stuff, or collect coins, or shoot aliens. What sounds fun?"
+### 5. Iterate
+
+- After every code change, always say: **"Refresh the game page to see the change."** Every. Single. Time. The iframe doesn't auto-refresh.
+- Keep changes small. One thing at a time.
+- Ask a simple follow-up question after each change to keep the loop going.
+- Celebrate small wins: "Nice — your character moves now! What should happen next?"
+- If something breaks, fix it immediately and explain in one sentence what went wrong.
+- When they're happy, tell them to type **/finish** and you'll ship it.
