@@ -21,19 +21,41 @@ Keep things short and simple. One change at a time. Use the game sandbox rules.
 - Run `git pull origin dev` to get the latest changes from remote.
 - If there are merge conflicts, resolve them (prefer remote changes if unsure).
 
-### 1. Explain what you will do
+### 1. Greet and set expectations
 
 Say something like:
 
-> We’ll update an existing game. We’ll only edit its `index.html` (and maybe the `thumbnail.png`), then I’ll rebuild and show it running. Tell me which game you want to change.
+> Hey! We're going to update one of the existing games.
+>
+> **Quick reminders:**
+> 1. **Always click "Run" and let me keep going** — don't stop me while I'm working.
+> 2. **One change at a time** — tell me one thing to fix or add, I'll do it, you refresh and check.
+> 3. **If something looks wrong, just tell me** and I'll fix it.
+>
+> Which game do you want to work on?
 
 ### 2. Choose the game to edit
 
 1. Open `frontend/public/games/games.json` and read the available `id` values.
-2. Ask the user to pick one by saying the `id` (example: `pong`, `snake`, `my-game`), or by describing the game name.
+2. List the games for the user so they can pick one.
 3. Confirm the selected `id` in your next message.
 
-### 3. Ask what they want to change
+### 3. Open the game for the user
+
+- Make sure the dev server is running (`cd frontend && npm run dev` in background if needed).
+- Put the URL in your chat message as a **markdown link** so it's clickable.
+- **CRITICAL FORMATTING:** Use markdown link syntax: `[Click here to open the game](http://localhost:5173/games/{id}/index.html)`. Do NOT use backticks around the URL, do NOT put it in a code block.
+- Say something like:
+
+> I've got the game ready!
+>
+> [Click here to open the game](http://localhost:5173/games/{id}/index.html)
+>
+> ⚠️ **Every time I make a change, you need to refresh the game page.** I'll remind you each time.
+>
+> What do you want to change?
+
+### 4. Ask what they want to change
 
 Ask for a single concrete update. Examples:
 
@@ -47,7 +69,7 @@ Ask for a single concrete update. Examples:
 If the user is vague, ask one question:
 - "Do you want the player to collect something, avoid something, or beat a boss?"
 
-### 4. Make the change (game sandbox only)
+### 5. Make the change (game sandbox only)
 
 - Only edit inside `frontend/public/games/{id}/`.
 - For the game logic, change `frontend/public/games/{id}/index.html` only.
@@ -59,29 +81,22 @@ If the user wants to rename the game `id` (changes the URL):
 - Update `frontend/public/games/games.json` `path`/`id` (and `thumbnail` path if used).
 - Remove the old `frontend/public/games/{id}/` folder contents (or at least ensure the old game is no longer listed in `games.json`).
 
-If the user changes any of these listing fields:
-- game `name`, `description`, `tags`, `thumbnail`
+If the user changes any listing fields (name, description, tags, thumbnail), update `games.json` accordingly.
 
-Then update the corresponding object inside `frontend/public/games/games.json` so the gallery stays correct.
-
-### 5. Verify + run
+### 6. Verify
 
 1. Run `cd frontend && npm run build` and fix any build errors until it passes.
-2. Run `cd frontend && npm run dev` **in the background** (the app link should appear in output).
-3. If the dev server is already running / port is in use, just point the user to the already-running URL found in the terminal output.
+2. Make sure the dev server is still running.
 
-### 6. Point the user back to the browser
+### 7. Tell the user to refresh
 
-Say something like:
+After **every** change, say something like:
 
-> I updated the game. Refresh your browser to see the change.
+> Done! **Refresh the game page** to see the change. [one-line description of what changed]
 
-If you started the dev server, also say:
+This is required every time. The iframe does not auto-refresh.
 
-> Look for the `http://localhost:5173` link and open it. If you already have it open, refresh the game page.
-
-### 7. Loop until done
+### 8. Loop until done
 
 After each update, ask:
-- "Want another change? If not, type `/finish`."
-
+- "Want another change? If not, type `/finish` to ship it."

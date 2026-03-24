@@ -43,5 +43,14 @@
     "thumbnail": "/games/my-game/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo"]
+  },
+  {
+    "id": "breakout-tetris-2",
+    "name": "Breakout Tetris 2",
+    "description": "Break bricks to unlock Tetris pieces! Multiple pieces can fall at once. Clear all bricks and Tetris blocks to win. ← → move paddle and pieces, Space rotate pieces.",
+    "path": "/games/breakout-tetris-2/index.html",
+    "thumbnail": "/games/breakout-tetris-2/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo"]
   }
 ]
