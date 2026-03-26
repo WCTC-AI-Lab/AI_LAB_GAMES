@@ -52,5 +52,14 @@
     "thumbnail": "/games/breakout-tetris-2/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo"]
+  },
+  {
+    "id": "mac-pan",
+    "name": "Mac Pan",
+    "description": "Chomp apples, clear levels, and dodge pink foes. Stay out of the blue ponds — only you sink! Arrows to move, Space to retry after game over.",
+    "path": "/games/mac-pan/index.html",
+    "thumbnail": "/games/mac-pan/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "arcade"]
   }
 ]

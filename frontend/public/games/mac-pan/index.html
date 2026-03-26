@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mac Pan</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+const W = 720;
+const H = 540;
+const PAC_R = 20;
+const APPLE_R = 11;
+const ENEMY_R = 15;
+const SPEED = 240;
+const ENEMY_SPEED = 130;
+const WALL = 3;
+const NUM_APPLES = 16;
+const NUM_ENEMIES = 3;
+const PAD = WALL + 48;
+const WALL_T = 10;
+/** Slightly smaller hitbox vs walls only — easier to slip through gaps (enemies/ponds unchanged). */
+const PAC_WALL_R = PAC_R - 5;
+
+const INNER_WALLS = [
+  { x: 130, y: 300, w: 150, h: WALL_T },
+  { x: 440, y: 300, w: 150, h: WALL_T },
+  { x: 140, y: 145, w: 130, h: WALL_T },
+];
+
+const PONDS = [
+  { x: 200, y: 380, w: 76, h: 60 },
+  { x: 520, y: 200, w: 76, h: 58 },
+  { x: 380, y: 115, w: 70, h: 52 },
+];
+
+kaplay({
+  width: W,
+  height: H,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+function outerWalls() {
+  return [
+    { x: 0, y: 0, w: W, h: WALL },
+    { x: 0, y: H - WALL, w: W, h: WALL },
+    { x: 0, y: 0, w: WALL, h: H },
+    { x: W - WALL, y: 0, w: WALL, h: H },
+  ];
+}
+
+function allWalls() {
+  return outerWalls().concat(INNER_WALLS);
+}
+
+function circleRectOverlap(cx, cy, r, bx, by, bw, bh) {
+  const nx = clamp(cx, bx, bx + bw);
+  const ny = clamp(cy, by, by + bh);
+  const dx = cx - nx;
+  const dy = cy - ny;
+  return dx * dx + dy * dy < r * r;
+}
+
+function circleHitsAnyWall(cx, cy, r, walls) {
+  for (let i = 0; i < walls.length; i++) {
+    const b = walls[i];
+    if (circleRectOverlap(cx, cy, r, b.x, b.y, b.w, b.h)) return true;
+  }
+  return false;
+}
+
+function circleHitsAnyPond(cx, cy, r) {
+  for (let i = 0; i < PONDS.length; i++) {
+    const b = PONDS[i];
+    if (circleRectOverlap(cx, cy, r, b.x, b.y, b.w, b.h)) return true;
+  }
+  return false;
+}
+
+function resolveCircleFromWall(cx, cy, r, bx, by, bw, bh) {
+  const closestX = clamp(cx, bx, bx + bw);
+  const closestY = clamp(cy, by, by + bh);
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  const d = Math.hypot(dx, dy);
+  if (d >= r - 1e-4 || d < 1e-6) return null;
+  const nx = dx / d;
+  const ny = dy / d;
+  const push = r - d + 0.5;
+  return {
+    cx: cx + nx * push,
+    cy: cy + ny * push,
+    nx: nx,
+    ny: ny,
+  };
+}
+
+function resolveEnemyAgainstWalls(e, walls) {
+  for (let pass = 0; pass < 5; pass++) {
+    let moved = false;
+    for (let i = 0; i < walls.length; i++) {
+      const b = walls[i];
+      const res = resolveCircleFromWall(e.pos.x, e.pos.y, ENEMY_R, b.x, b.y, b.w, b.h);
+      if (res) {
+        e.pos.x = res.cx;
+        e.pos.y = res.cy;
+        if (Math.abs(res.nx) > Math.abs(res.ny)) e.vx *= -1;
+        else e.vy *= -1;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+}
+
+function spawnApple(pacPos, others, walls) {
+  for (let t = 0; t < 160; t++) {
+    const p = vec2(rand(PAD, W - PAD), rand(PAD, H - PAD));
+    if (p.dist(pacPos) < PAC_R + APPLE_R + 36) continue;
+    if (circleHitsAnyWall(p.x, p.y, APPLE_R + 2, walls)) continue;
+    if (circleHitsAnyPond(p.x, p.y, APPLE_R + 2)) continue;
+    let ok = true;
+    for (let i = 0; i < others.length; i++) {
+      if (p.dist(others[i]) < APPLE_R * 2 + 12) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return p;
+  }
+  return vec2(W * 0.75, H * 0.35);
+}
+
+function spawnEnemy(pacPos, applePosList, enemyPosList, walls) {
+  for (let t = 0; t < 160; t++) {
+    const p = vec2(rand(PAD, W - PAD), rand(PAD, H - PAD));
+    if (p.dist(pacPos) < PAC_R + ENEMY_R + 70) continue;
+    if (circleHitsAnyWall(p.x, p.y, ENEMY_R + 1, walls)) continue;
+    let ok = true;
+    for (let i = 0; i < applePosList.length; i++) {
+      if (p.dist(applePosList[i]) < ENEMY_R + APPLE_R + 10) {
+        ok = false;
+        break;
+      }
+    }
+    for (let i = 0; i < enemyPosList.length; i++) {
+      if (p.dist(enemyPosList[i]) < ENEMY_R * 2 + 14) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return p;
+  }
+  return vec2(W * 0.2, H * 0.25);
+}
+
+scene("game", () => {
+  let dead = false;
+  let overlayShown = false;
+  let levelingUp = false;
+  let score = 0;
+  let level = 1;
+
+  const walls = allWalls();
+
+  add([
+    rect(W, WALL),
+    pos(0, 0),
+    color(30, 41, 59),
+    z(1),
+  ]);
+  add([
+    rect(W, WALL),
+    pos(0, H - WALL),
+    color(30, 41, 59),
+    z(1),
+  ]);
+  add([
+    rect(WALL, H),
+    pos(0, 0),
+    color(30, 41, 59),
+    z(1),
+  ]);
+  add([
+    rect(WALL, H),
+    pos(W - WALL, 0),
+    color(30, 41, 59),
+    z(1),
+  ]);
+
+  PONDS.forEach((p) => {
+    add([
+      pos(p.x, p.y),
+      z(2),
+      "pondGfx",
+      {
+        draw() {
+          const wob = Math.sin(time() * 2.2 + p.x * 0.01) * 0.04 + 0.96;
+          drawRect({
+            width: p.w,
+            height: p.h,
+            pos: vec2(0, 0),
+            color: rgb(40, 110, 150),
+          });
+          drawRect({
+            width: p.w * wob,
+            height: p.h * wob,
+            pos: vec2((p.w * (1 - wob)) / 2, (p.h * (1 - wob)) / 2),
+            color: rgb(70, 160, 200),
+          });
+        },
+      },
+    ]);
+  });
+
+  INNER_WALLS.forEach((b) => {
+    add([
+      rect(b.w, b.h),
+      pos(b.x, b.y),
+      color(45, 55, 75),
+      z(3),
+      outline(2, rgb(70, 85, 110)),
+    ]);
+  });
+
+  const scoreLabel = add([
+    text("Score: 0", { size: 18 }),
+    pos(16, 12),
+    color(200, 200, 210),
+    z(20),
+  ]);
+  const levelLabel = add([
+    text("Level: 1", { size: 18 }),
+    pos(W / 2, 12),
+    anchor("top"),
+    color(160, 220, 255),
+    z(20),
+  ]);
+  add([
+    text("Arrows to move · ponds = danger", { size: 13 }),
+    pos(W - 16, 12),
+    anchor("topright"),
+    color(148, 163, 184),
+    z(20),
+  ]);
+
+  const SAFE_START = vec2(W / 2, H / 2);
+
+  const pac = add([
+    pos(SAFE_START.x, SAFE_START.y),
+    anchor("center"),
+    rotate(0),
+    z(10),
+    {
+      dir: vec2(1, 0),
+      mouth: 0.35,
+      draw() {
+        const m = this.mouth;
+        const segs = 26;
+        const pts = [vec2(0, 0)];
+        for (let i = 0; i <= segs; i++) {
+          const t = m + (Math.PI * 2 - 2 * m) * (i / segs);
+          pts.push(vec2(Math.cos(t) * PAC_R, Math.sin(t) * PAC_R));
+        }
+        drawPolygon({ pts: pts, color: rgb(255, 216, 52) });
+        drawCircle({
+          pos: vec2(6, -8),
+          radius: 2.5,
+          color: rgb(25, 25, 55),
+        });
+      },
+    },
+  ]);
+
+  function appleDraw() {
+    drawCircle({
+      pos: vec2(0, 2),
+      radius: APPLE_R,
+      color: rgb(220, 55, 55),
+    });
+    drawCircle({
+      pos: vec2(0, -APPLE_R + 2),
+      radius: 4,
+      color: rgb(80, 160, 70),
+    });
+    drawRect({
+      width: 3,
+      height: 6,
+      pos: vec2(-1.5, -APPLE_R - 2),
+      color: rgb(120, 80, 50),
+    });
+  }
+
+  function enemyDraw() {
+    drawCircle({
+      pos: vec2(0, 0),
+      radius: ENEMY_R,
+      color: rgb(175, 55, 140),
+    });
+    drawCircle({
+      pos: vec2(-5, -3),
+      radius: 3,
+      color: rgb(40, 40, 55),
+    });
+    drawCircle({
+      pos: vec2(5, -3),
+      radius: 3,
+      color: rgb(40, 40, 55),
+    });
+  }
+
+  function spawnAllApples() {
+    const centers = [];
+    for (let n = 0; n < NUM_APPLES; n++) {
+      const spot = spawnApple(pac.pos, centers, walls);
+      centers.push(spot);
+      add([
+        pos(spot),
+        anchor("center"),
+        z(5),
+        "apple",
+        { draw: appleDraw },
+      ]);
+    }
+    return centers;
+  }
+
+  function spawnAllEnemies(appleCenters) {
+    const count = Math.min(7, NUM_ENEMIES + level - 1);
+    const enemyPositions = [];
+    for (let n = 0; n < count; n++) {
+      const spot = spawnEnemy(pac.pos, appleCenters, enemyPositions, walls);
+      enemyPositions.push(spot);
+      const ang = rand(0, 360);
+      const d = vec2(Math.cos((ang * Math.PI) / 180), Math.sin((ang * Math.PI) / 180));
+      add([
+        pos(spot),
+        anchor("center"),
+        z(8),
+        "enemy",
+        {
+          vx: d.x,
+          vy: d.y,
+          draw: enemyDraw,
+        },
+      ]);
+    }
+  }
+
+  function enemySpeedForLevel() {
+    return ENEMY_SPEED * (1 + 0.12 * (level - 1));
+  }
+
+  function movePacWithWalls(step) {
+    const dx = pac.dir.x * step;
+    const dy = pac.dir.y * step;
+    let x = pac.pos.x;
+    let y = pac.pos.y;
+    function solid(px, py) {
+      return circleHitsAnyWall(px, py, PAC_WALL_R, walls);
+    }
+    if (!solid(x + dx, y + dy)) {
+      x += dx;
+      y += dy;
+    } else if (!solid(x + dx, y)) {
+      x += dx;
+    } else if (!solid(x, y + dy)) {
+      y += dy;
+    }
+    pac.pos.x = x;
+    pac.pos.y = y;
+  }
+
+  function startNextLevel() {
+    destroyAll("enemy");
+    level++;
+    levelLabel.text = "Level: " + level;
+    pac.pos = vec2(SAFE_START.x, SAFE_START.y);
+    pac.dir = vec2(1, 0);
+
+    const centers = spawnAllApples();
+    spawnAllEnemies(centers);
+
+    const banner = add([
+      text("Level " + level, { size: 40 }),
+      pos(W / 2, H / 2),
+      anchor("center"),
+      color(160, 255, 180),
+      z(55),
+    ]);
+    wait(0.65, () => {
+      banner.destroy();
+      levelingUp = false;
+    });
+  }
+
+  let appleCenters = spawnAllApples();
+  spawnAllEnemies(appleCenters);
+
+  onKeyDown("left", () => {
+    if (!dead && !levelingUp) pac.dir = vec2(-1, 0);
+  });
+  onKeyDown("right", () => {
+    if (!dead && !levelingUp) pac.dir = vec2(1, 0);
+  });
+  onKeyDown("up", () => {
+    if (!dead && !levelingUp) pac.dir = vec2(0, -1);
+  });
+  onKeyDown("down", () => {
+    if (!dead && !levelingUp) pac.dir = vec2(0, 1);
+  });
+
+  onKeyPress("space", () => {
+    if (dead) go("game");
+  });
+
+  onUpdate(() => {
+    if (!dead && !levelingUp) {
+      pac.mouth = 0.15 + Math.abs(Math.sin(time() * 9)) * 0.42;
+      const face = Math.atan2(pac.dir.y, pac.dir.x);
+      pac.angle = (face * 180) / Math.PI;
+
+      const es = enemySpeedForLevel() * dt();
+      get("enemy").forEach((e) => {
+        e.pos = e.pos.add(vec2(e.vx, e.vy).scale(es));
+        resolveEnemyAgainstWalls(e, walls);
+      });
+
+      const step = SPEED * dt();
+      movePacWithWalls(step);
+
+      if (circleHitsAnyPond(pac.pos.x, pac.pos.y, PAC_R * 0.92)) {
+        dead = true;
+      }
+
+      const eatDist = PAC_R + APPLE_R - 2;
+      get("apple").forEach((a) => {
+        if (pac.pos.dist(a.pos) < eatDist) {
+          a.destroy();
+          score++;
+          scoreLabel.text = "Score: " + score;
+        }
+      });
+
+      if (get("apple").length === 0) {
+        levelingUp = true;
+        startNextLevel();
+      }
+
+      const killDist = PAC_R + ENEMY_R - 4;
+      for (const e of get("enemy")) {
+        if (pac.pos.dist(e.pos) < killDist) {
+          dead = true;
+          break;
+        }
+      }
+    }
+
+    if (dead && !overlayShown) {
+      overlayShown = true;
+      add([
+        rect(W, H),
+        pos(0, 0),
+        color(10, 12, 22),
+        opacity(0.72),
+        z(50),
+      ]);
+      add([
+        text("Game Over", { size: 42 }),
+        pos(W / 2, H / 2 - 36),
+        anchor("center"),
+        color(255, 200, 200),
+        z(60),
+      ]);
+      add([
+        text("Press SPACE to try again", { size: 20 }),
+        pos(W / 2, H / 2 + 28),
+        anchor("center"),
+        color(200, 200, 220),
+        z(60),
+      ]);
+    }
+  });
+});
+
+go("game");
+</script>
+</body>
+</html>
