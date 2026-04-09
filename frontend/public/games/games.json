@@ -1,5 +1,14 @@
 [
   {
+    "id": "tiger-mermaid-sea-escape",
+    "name": "Tiger Mermaid Sea Escape",
+    "description": "Deliver fish to your sandy lair, grab pearls to level up (bigger & faster), dodge hooks and outlast a shark—hide in the castle. Enter restarts.",
+    "path": "/games/tiger-mermaid-sea-escape/index.html",
+    "thumbnail": "/games/tiger-mermaid-sea-escape/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "arcade", "starter"]
+  },
+  {
     "id": "pickle-lorax-tower",
     "name": "Pickle Survives the Lorax Tower",
     "description": "Stack boxes for height — a mischievous Lorax smashes your tower unless you grab him and dump him in the trash. WASD move, W/Up jump, Space grab/drop.",
