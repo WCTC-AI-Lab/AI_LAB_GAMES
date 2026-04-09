@@ -1,5 +1,14 @@
 [
   {
+    "id": "pickle-lorax-tower",
+    "name": "Pickle Survives the Lorax Tower",
+    "description": "Stack boxes for height — a mischievous Lorax smashes your tower unless you grab him and dump him in the trash. WASD move, W/Up jump, Space grab/drop.",
+    "path": "/games/pickle-lorax-tower/index.html",
+    "thumbnail": "/games/pickle-lorax-tower/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "arcade", "stacking"]
+  },
+  {
     "id": "pong",
     "name": "2-Player Pong",
     "description": "Classic paddle game. Challenge a friend with W/S and Arrow keys.",

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pickle Survives the Lorax Tower</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+const W = 800;
+const H = 520;
+
+const SAND_END = 330;
+
+const MOVE_SPEED = 280;
+const GRAVITY = 1050;
+const JUMP_V = -430;
+
+/** Ellipse center = player.pos; feet = pos + (0, RY). */
+const RY = 38;
+const RX_BASE = 18;
+
+const BOX_W = 40;
+const BOX_H = 28;
+const PICKUP_DIST = 58;
+const FEET_HW = 18;
+const CARRY_OFF_X = 44;
+const CARRY_OFF_Y = -18;
+const DROP_OFF_X = 56;
+
+const TRASH_X = 88;
+const TRASH_W = 46;
+const TRASH_H = 52;
+const LORAX_W = 30;
+const LORAX_H = 40;
+const LORAX_SPAWN_SEC = 20;
+const LORAX_KNOCK_SEC = 1.35;
+const LORAX_SPEED = 125;
+const LORAX_KNOCK_R = 100;
+
+/**
+ * Flat ground: each segment [PLAT_X[i], PLAT_X[i+1]) is level at height PLAT_Y[i].
+ * Jumps are vertical at the x boundaries (no slopes).
+ */
+const PLAT_X = [0, 150, 300, 430, 560, W];
+const PLAT_Y = [388, 372, 408, 380, 395, 395];
+
+function surfaceY(x) {
+  let cx = x;
+  if (cx < 0) cx = 0;
+  if (cx > W) cx = W;
+  for (let i = 0; i < PLAT_X.length - 1; i++) {
+    const last = i === PLAT_X.length - 2;
+    if (cx >= PLAT_X[i] && (last ? cx <= PLAT_X[i + 1] : cx < PLAT_X[i + 1])) {
+      return PLAT_Y[i];
+    }
+  }
+  return PLAT_Y[PLAT_Y.length - 1];
+}
+
+function pickleBodyPts() {
+  const pts = [];
+  const n = 52;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const bump =
+      1 +
+      0.12 * Math.sin(a * 4) +
+      0.08 * Math.sin(a * 7 + 0.5) +
+      0.05 * Math.sin(a * 11 + 1.1);
+    const rx = RX_BASE * bump;
+    const ry = RY;
+    pts.push(vec2(Math.cos(a) * rx, Math.sin(a) * ry));
+  }
+  return pts;
+}
+
+kaplay({
+  width: W,
+  height: H,
+  background: [120, 175, 210],
+  crisp: true,
+});
+
+/** Must run after kaplay() — vec2 / rgb only exist then. */
+const PICKLE_BODY = pickleBodyPts();
+const PICKLE_CENTER = vec2(0, 0);
+
+const PIP_LOCAL = [
+  vec2(-8, -6),
+  vec2(5, 4),
+  vec2(-4, 14),
+  vec2(9, -10),
+  vec2(-10, 10),
+  vec2(3, -18),
+  vec2(-6, 22),
+  vec2(7, 20),
+  vec2(-2, -22),
+];
+
+scene("game", () => {
+  add([
+    pos(0, 0),
+    z(0),
+    {
+      draw() {
+        drawRect({
+          pos: vec2(0, 0),
+          width: W,
+          height: H * 0.58,
+          color: rgb(125, 185, 225),
+        });
+        drawRect({
+          pos: vec2(0, H * 0.58),
+          width: W,
+          height: H * 0.42,
+          color: rgb(165, 205, 235),
+        });
+      },
+    },
+  ]);
+
+  add([
+    pos(0, 0),
+    z(1),
+    {
+      draw() {
+        drawPolygon({
+          pts: [
+            vec2(-20, 340),
+            vec2(120, 260),
+            vec2(260, 310),
+            vec2(400, 220),
+            vec2(520, 280),
+            vec2(680, 200),
+            vec2(820, 260),
+            vec2(820, 400),
+            vec2(-20, 400),
+          ],
+          color: rgb(75, 95, 120),
+        });
+        drawPolygon({
+          pts: [
+            vec2(-20, 380),
+            vec2(200, 300),
+            vec2(440, 350),
+            vec2(620, 270),
+            vec2(820, 320),
+            vec2(820, 420),
+            vec2(-20, 420),
+          ],
+          color: rgb(95, 115, 140),
+        });
+      },
+    },
+  ]);
+
+  add([
+    pos(0, 0),
+    z(2),
+    {
+      draw() {
+        drawPolygon({
+          pts: [
+            vec2(0, 400),
+            vec2(140, 340),
+            vec2(300, 380),
+            vec2(480, 320),
+            vec2(640, 360),
+            vec2(W, 330),
+            vec2(W, 450),
+            vec2(0, 450),
+          ],
+          color: rgb(110, 140, 100),
+        });
+      },
+    },
+  ]);
+
+  function terrainStrip(x0, x1, color, zOrder) {
+    const step = 8;
+    const pts = [];
+    for (let x = x0; x <= x1; x += step) {
+      pts.push(vec2(x, surfaceY(x)));
+    }
+    if (pts[pts.length - 1].x < x1) {
+      pts.push(vec2(x1, surfaceY(x1)));
+    }
+    pts.push(vec2(x1, H + 80));
+    pts.push(vec2(x0, H + 80));
+    add([
+      pos(0, 0),
+      z(zOrder),
+      {
+        draw() {
+          drawPolygon({ pts, color });
+        },
+      },
+    ]);
+  }
+
+  terrainStrip(0, SAND_END, rgb(210, 185, 140), 3);
+  terrainStrip(SAND_END, W, rgb(65, 120, 55), 3);
+
+  add([
+    pos(0, 0),
+    z(4),
+    {
+      draw() {
+        const outlineC = rgb(20, 35, 55);
+        const lineC = rgb(255, 252, 235);
+        for (let i = 0; i < PLAT_X.length - 1; i++) {
+          const y = PLAT_Y[i];
+          const xa = PLAT_X[i];
+          const xb = PLAT_X[i + 1];
+          const p1 = vec2(xa, y);
+          const p2 = vec2(xb, y);
+          drawLine({ p1, p2, width: 4, color: outlineC });
+          drawLine({ p1, p2, width: 2, color: lineC });
+        }
+        for (let i = 0; i < PLAT_X.length - 2; i++) {
+          const x = PLAT_X[i + 1];
+          const yL = PLAT_Y[i];
+          const yR = PLAT_Y[i + 1];
+          if (yL !== yR) {
+            const p1 = vec2(x, yL);
+            const p2 = vec2(x, yR);
+            drawLine({ p1, p2, width: 4, color: outlineC });
+            drawLine({ p1, p2, width: 2, color: lineC });
+          }
+        }
+        const tickEvery = 48;
+        for (let x = 0; x <= W; x += tickEvery) {
+          const y = surfaceY(x);
+          drawLine({
+            p1: vec2(x, y),
+            p2: vec2(x, y + 12),
+            width: 2,
+            color: outlineC,
+          });
+          drawLine({
+            p1: vec2(x, y),
+            p2: vec2(x, y + 10),
+            width: 1,
+            color: lineC,
+          });
+        }
+      },
+    },
+  ]);
+
+  const treeXs = [380, 430, 500, 560, 620, 690, 740];
+  for (let i = 0; i < treeXs.length; i++) {
+    const tx = treeXs[i];
+    const ty = surfaceY(tx);
+    add([
+      pos(tx - 6, ty),
+      anchor("botleft"),
+      z(5),
+      {
+        draw() {
+          const sway = Math.sin(tx * 0.07) * 3;
+          drawRect({
+            pos: vec2(sway * 0.2, -46),
+            width: 12,
+            height: 46,
+            color: rgb(75, 50, 35),
+          });
+          drawPolygon({
+            pts: [
+              vec2(-26 + sway, -48),
+              vec2(38 + sway, -48),
+              vec2(6 + sway, -95),
+            ],
+            color: rgb(35, 95, 45),
+          });
+          drawPolygon({
+            pts: [
+              vec2(-20 + sway * 0.5, -78),
+              vec2(32 + sway * 0.5, -78),
+              vec2(6 + sway * 0.5, -118),
+            ],
+            color: rgb(45, 115, 55),
+          });
+        },
+      },
+    ]);
+  }
+
+  const boxes = [];
+  let carrying = null;
+
+  function groundTopAt(cx, halfSpan) {
+    let m = surfaceY(cx);
+    for (let sx = cx - halfSpan; sx <= cx + halfSpan; sx += 6) {
+      m = Math.max(m, surfaceY(sx));
+    }
+    return m;
+  }
+
+  /** Y where the bottom of a new box should sit (smaller y = higher on screen). */
+  function stackSupportY(cx, exclude) {
+    let support = groundTopAt(cx, BOX_W / 2);
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (b === exclude || b.carried) continue;
+      const bx = b.obj.pos.x;
+      if (Math.abs(cx - bx) >= BOX_W - 1) continue;
+      const boxTopY = b.obj.pos.y - BOX_H / 2;
+      support = Math.min(support, boxTopY);
+    }
+    return support;
+  }
+
+  function spawnBox(cx) {
+    const sup = stackSupportY(cx, null);
+    const cy = sup - BOX_H / 2;
+    const obj = add([
+      rect(BOX_W, BOX_H),
+      pos(cx, cy),
+      anchor("center"),
+      color(175, 130, 85),
+      outline(2, rgb(95, 70, 40)),
+      z(8),
+      area(),
+    ]);
+    const entry = { obj, carried: false };
+    boxes.push(entry);
+    return entry;
+  }
+
+  [200, 250, 300, 300, 520, 520, 620, 680].forEach((cx) => spawnBox(cx));
+
+  const trashCanY = surfaceY(TRASH_X) - TRASH_H / 2 - 4;
+  add([
+    pos(TRASH_X, trashCanY),
+    anchor("center"),
+    z(7),
+    {
+      draw() {
+        const hw = TRASH_W / 2;
+        const hh = TRASH_H / 2;
+        drawRect({
+          pos: vec2(-hw - 2, -hh - 6),
+          width: TRASH_W + 4,
+          height: 8,
+          color: rgb(55, 58, 68),
+        });
+        drawRect({
+          pos: vec2(-hw, -hh),
+          width: TRASH_W,
+          height: TRASH_H,
+          color: rgb(78, 80, 92),
+        });
+        drawRect({
+          pos: vec2(-hw + 5, -hh + 8),
+          width: TRASH_W - 10,
+          height: TRASH_H - 18,
+          color: rgb(42, 44, 54),
+        });
+        drawRect({
+          pos: vec2(-hw + 3, -hh - 2),
+          width: TRASH_W - 6,
+          height: 6,
+          color: rgb(95, 98, 108),
+        });
+        drawRect({
+          pos: vec2(-16, -4),
+          width: 32,
+          height: 5,
+          color: rgb(200, 80, 80),
+        });
+      },
+    },
+  ]);
+
+  add([
+    text("TRASH", { size: 11 }),
+    pos(TRASH_X, trashCanY - TRASH_H / 2 - 16),
+    anchor("center"),
+    color(55, 60, 75),
+    z(20),
+  ]);
+
+  let lorax = null;
+  let loraxCarried = false;
+  let loraxKnockTimer = 0;
+  let loraxSpawnTimer = 18 + Math.random() * 5;
+
+  function resetLoraxSpawnTimer() {
+    loraxSpawnTimer = LORAX_SPAWN_SEC + Math.random() * 6 - 3;
+  }
+
+  function knockBoxesFromLorax(lx) {
+    for (let pass = 0; pass < 4; pass++) {
+      for (let i = 0; i < boxes.length; i++) {
+        const b = boxes[i];
+        if (b.carried) continue;
+        if (Math.abs(b.obj.pos.x - lx) > LORAX_KNOCK_R) continue;
+        const spread = (Math.random() - 0.5) * 95;
+        const nx = clamp(b.obj.pos.x + spread, BOX_W / 2 + 4, W - BOX_W / 2 - 4);
+        b.obj.pos.x = nx;
+        b.obj.pos.y = stackSupportY(nx, b) - BOX_H / 2;
+      }
+    }
+  }
+
+  function spawnLorax() {
+    if (lorax) return;
+    const sx = 36;
+    const sy = getSupportSurfaceForFeet(sx, groundTopAt(sx, 10) + 80) - LORAX_H / 2;
+    lorax = add([
+      pos(sx, sy),
+      anchor("center"),
+      z(13),
+      {
+        face: 1,
+        draw() {
+          const f = this.face;
+          const xf = (n) => n * f;
+          drawEllipse({
+            pos: vec2(0, 4),
+            radiusX: 15,
+            radiusY: 19,
+            color: rgb(240, 150, 65),
+          });
+          drawPolygon({
+            pts: [
+              vec2(xf(-20), 6),
+              vec2(xf(-8), 16),
+              vec2(xf(0), 10),
+              vec2(xf(8), 16),
+              vec2(xf(20), 6),
+              vec2(xf(0), 14),
+            ],
+            color: rgb(210, 100, 45),
+          });
+          drawEllipse({
+            pos: vec2(xf(-7), -2),
+            radiusX: 6,
+            radiusY: 7,
+            color: rgb(255, 255, 255),
+          });
+          drawEllipse({
+            pos: vec2(xf(7), -2),
+            radiusX: 6,
+            radiusY: 7,
+            color: rgb(255, 255, 255),
+          });
+          drawCircle({
+            pos: vec2(xf(-7), -1),
+            radius: 2.5,
+            color: rgb(35, 35, 55),
+          });
+          drawCircle({
+            pos: vec2(xf(7), -1),
+            radius: 2.5,
+            color: rgb(35, 35, 55),
+          });
+          drawLine({
+            p1: vec2(xf(-10), -14),
+            p2: vec2(xf(-4), -10),
+            width: 3,
+            color: rgb(120, 60, 30),
+          });
+          drawLine({
+            p1: vec2(xf(10), -14),
+            p2: vec2(xf(4), -10),
+            width: 3,
+            color: rgb(120, 60, 30),
+          });
+          drawEllipse({
+            pos: vec2(0, -24),
+            radiusX: 11,
+            radiusY: 9,
+            color: rgb(255, 210, 90),
+          });
+        },
+      },
+    ]);
+    loraxKnockTimer = LORAX_KNOCK_SEC;
+  }
+
+  function nearTrashForDump() {
+    return (
+      Math.abs(hero.pos.x - TRASH_X) < 52 &&
+      Math.abs(hero.pos.y + RY - trashCanY) < 95
+    );
+  }
+
+  function nearLoraxForPickup() {
+    if (!lorax || loraxCarried) return false;
+    const d = Math.hypot(lorax.pos.x - hero.pos.x, lorax.pos.y - hero.pos.y);
+    return d < PICKUP_DIST + 8;
+  }
+
+  const startX = 160;
+  const startCy = surfaceY(startX) - RY;
+
+  const hero = add([
+    pos(startX, startCy),
+    anchor("center"),
+    z(12),
+    {
+      vy: 0,
+      face: 1,
+      grounded: true,
+      draw() {
+        const f = this.face;
+        const x = (n) => n * f;
+
+        const outline = [];
+        for (let i = 0; i < PICKLE_BODY.length; i++) {
+          const p = PICKLE_BODY[i];
+          const d = Math.hypot(p.x, p.y) || 1;
+          const s = (d + 2.2) / d;
+          outline.push(vec2(x(p.x * s), p.y * s));
+        }
+        drawPolygon({
+          pts: outline,
+          color: rgb(18, 72, 32),
+        });
+
+        drawPolygon({
+          pts: PICKLE_BODY.map((p) => vec2(x(p.x), p.y)),
+          color: rgb(58, 145, 72),
+        });
+
+        const inner = [];
+        for (let i = 0; i < PICKLE_BODY.length; i++) {
+          const p = PICKLE_BODY[i];
+          inner.push(
+            vec2(
+              x(PICKLE_CENTER.x + (p.x - PICKLE_CENTER.x) * 0.78),
+              PICKLE_CENTER.y + (p.y - PICKLE_CENTER.y) * 0.78,
+            ),
+          );
+        }
+        drawPolygon({
+          pts: inner,
+          color: rgb(95, 185, 108),
+        });
+
+        drawEllipse({
+          pos: vec2(x(-6), -4),
+          radiusX: 11,
+          radiusY: 18,
+          color: rgb(140, 220, 150),
+          opacity: 0.35,
+        });
+
+        for (let i = 0; i < PIP_LOCAL.length; i++) {
+          const p = PIP_LOCAL[i];
+          drawEllipse({
+            pos: vec2(x(p.x + 0.4), p.y),
+            radiusX: 2.1,
+            radiusY: 2.6,
+            color: rgb(28, 78, 38),
+          });
+          drawEllipse({
+            pos: vec2(x(p.x - 0.3), p.y - 0.3),
+            radiusX: 0.9,
+            radiusY: 1.1,
+            color: rgb(180, 235, 175),
+            opacity: 0.5,
+          });
+        }
+
+        drawPolygon({
+          pts: [
+            vec2(x(-5), -RY - 2),
+            vec2(x(5), -RY - 2),
+            vec2(x(4), -RY - 14),
+            vec2(x(0), -RY - 18),
+            vec2(x(-4), -RY - 14),
+          ],
+          color: rgb(55, 110, 62),
+        });
+        drawRect({
+          pos: vec2(x(-2.5), -RY - 22),
+          width: 5,
+          height: 10,
+          color: rgb(95, 140, 75),
+        });
+        drawEllipse({
+          pos: vec2(x(0), -RY - 24),
+          radiusX: 5,
+          radiusY: 4,
+          color: rgb(110, 165, 85),
+        });
+      },
+    },
+  ]);
+
+  /**
+   * Highest support surface at or below `feetY` (walking past a tower no longer
+   * snaps you to the top — you must climb/jump onto each level).
+   */
+  function getSupportSurfaceForFeet(fx, feetY) {
+    const g = groundTopAt(fx, FEET_HW);
+    const candidates = [g];
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (b.carried) continue;
+      const bx = b.obj.pos.x;
+      if (Math.abs(fx - bx) < BOX_W / 2 + FEET_HW) {
+        candidates.push(b.obj.pos.y - BOX_H / 2);
+      }
+    }
+    let best = -Infinity;
+    for (let i = 0; i < candidates.length; i++) {
+      const s = candidates[i];
+      if (s <= feetY + 1.5) {
+        best = Math.max(best, s);
+      }
+    }
+    if (best === -Infinity) return Number.POSITIVE_INFINITY;
+    return best;
+  }
+
+  function getFeetSupportY() {
+    const feetY = hero.pos.y + RY;
+    return getSupportSurfaceForFeet(hero.pos.x, feetY);
+  }
+
+  function resolveHeroVsBoxes() {
+    for (let pass = 0; pass < 4; pass++) {
+      for (let i = 0; i < boxes.length; i++) {
+        const b = boxes[i];
+        if (b.carried) continue;
+        const bx = b.obj.pos.x;
+        const by = b.obj.pos.y;
+        const left = bx - BOX_W / 2;
+        const right = bx + BOX_W / 2;
+        const top = by - BOX_H / 2;
+        const bottom = by + BOX_H / 2;
+        const px = hero.pos.x;
+        const pLeft = px - FEET_HW;
+        const pRight = px + FEET_HW;
+        const pBottom = hero.pos.y + RY;
+        const pTop = hero.pos.y - 42;
+        if (pRight <= left || pLeft >= right || pBottom <= top || pTop >= bottom) continue;
+        if (pBottom <= top + 2) continue;
+        const penL = pRight - left;
+        const penR = right - pLeft;
+        if (penL > 0 && penR > 0) {
+          if (penL <= penR) {
+            hero.pos.x = left - FEET_HW - 0.5;
+          } else {
+            hero.pos.x = right + FEET_HW + 0.5;
+          }
+        }
+      }
+    }
+  }
+
+  function pickNearbyBox() {
+    if (carrying || loraxCarried) return null;
+    const cands = [];
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (b.carried) continue;
+      const d = Math.abs(b.obj.pos.x - hero.pos.x);
+      if (d > PICKUP_DIST) continue;
+      if (Math.abs(b.obj.pos.y - hero.pos.y) > 110) continue;
+      cands.push(b);
+    }
+    if (cands.length === 0) return null;
+    cands.sort((a, b) => a.obj.pos.y - b.obj.pos.y);
+    return cands[0];
+  }
+
+  function tryPutDown() {
+    if (!carrying) return;
+    const b = carrying;
+    const cx = clamp(hero.pos.x + hero.face * DROP_OFF_X, BOX_W / 2 + 6, W - BOX_W / 2 - 6);
+    const sup = stackSupportY(cx, b);
+    b.obj.pos.x = cx;
+    b.obj.pos.y = sup - BOX_H / 2;
+    b.carried = false;
+    carrying = null;
+    b.obj.z = 8;
+  }
+
+  function tallestTowerPx() {
+    const list = boxes.filter((b) => !b.carried);
+    if (list.length === 0) return 0;
+    let best = 0;
+    for (let i = 0; i < list.length; i++) {
+      const xi = list[i].obj.pos.x;
+      let minTopY = Infinity;
+      for (let j = 0; j < list.length; j++) {
+        if (Math.abs(list[j].obj.pos.x - xi) >= BOX_W - 1) continue;
+        const ty = list[j].obj.pos.y - BOX_H / 2;
+        minTopY = Math.min(minTopY, ty);
+      }
+      if (minTopY === Infinity) continue;
+      const groundY = groundTopAt(xi, BOX_W / 2);
+      const h = groundY - minTopY;
+      if (h > best) best = h;
+    }
+    return Math.max(0, Math.round(best));
+  }
+
+  let bestTowerPx = 0;
+  const scoreLabel = add([
+    text("Best tower: 0 px", { size: 17 }),
+    pos(W / 2, 38),
+    anchor("top"),
+    color(20, 35, 55),
+    z(20),
+  ]);
+
+  onUpdate(() => {
+    const d = dt();
+    let move = 0;
+    if (isKeyDown("left") || isKeyDown("a")) move -= 1;
+    if (isKeyDown("right") || isKeyDown("d")) move += 1;
+    if (move !== 0) hero.face = move > 0 ? 1 : -1;
+
+    hero.pos.x += move * MOVE_SPEED * d;
+    hero.pos.x = clamp(hero.pos.x, RX_BASE + 8, W - RX_BASE - 8);
+
+    hero.vy += GRAVITY * d;
+    hero.pos.y += hero.vy * d;
+
+    const feetY = hero.pos.y + RY;
+    const supportY = getSupportSurfaceForFeet(hero.pos.x, feetY);
+    if (Number.isFinite(supportY) && feetY >= supportY && hero.vy >= 0) {
+      hero.pos.y = supportY - RY;
+      hero.vy = 0;
+      hero.grounded = true;
+    } else {
+      hero.grounded = false;
+    }
+
+    resolveHeroVsBoxes();
+    hero.pos.x = clamp(hero.pos.x, RX_BASE + 8, W - RX_BASE - 8);
+
+    const feet2 = hero.pos.y + RY;
+    const support2 = getSupportSurfaceForFeet(hero.pos.x, feet2);
+    if (Number.isFinite(support2) && feet2 >= support2 && hero.vy >= 0) {
+      hero.pos.y = support2 - RY;
+      hero.vy = 0;
+      hero.grounded = true;
+    }
+
+    if (!lorax && !loraxCarried) {
+      loraxSpawnTimer -= d;
+      if (loraxSpawnTimer <= 0) {
+        spawnLorax();
+      }
+    }
+
+    if (lorax && !loraxCarried) {
+      loraxKnockTimer -= d;
+      if (loraxKnockTimer <= 0) {
+        knockBoxesFromLorax(lorax.pos.x);
+        loraxKnockTimer = LORAX_KNOCK_SEC;
+      }
+      const targetX = 560;
+      let dir = 0;
+      if (lorax.pos.x < targetX - 10) dir = 1;
+      else if (lorax.pos.x > targetX + 10) dir = -1;
+      if (dir !== 0) lorax.face = dir;
+      if (dir !== 0) {
+        lorax.pos.x += dir * LORAX_SPEED * d;
+      }
+      lorax.pos.x = clamp(lorax.pos.x, 22, W - 22);
+      const loraxFeet = lorax.pos.y + LORAX_H / 2;
+      const supL = getSupportSurfaceForFeet(lorax.pos.x, loraxFeet);
+      if (Number.isFinite(supL)) {
+        lorax.pos.y = supL - LORAX_H / 2;
+      }
+    }
+
+    if (loraxCarried && lorax) {
+      lorax.pos.x = hero.pos.x + hero.face * 36;
+      lorax.pos.y = hero.pos.y - 22;
+      lorax.face = hero.face;
+      lorax.z = 16;
+    }
+
+    if (carrying) {
+      carrying.obj.pos.x = hero.pos.x + hero.face * CARRY_OFF_X;
+      carrying.obj.pos.y = hero.pos.y + CARRY_OFF_Y;
+      carrying.obj.z = 15;
+    }
+
+    const tower = tallestTowerPx();
+    if (tower > bestTowerPx) bestTowerPx = tower;
+    scoreLabel.text = "Best tower: " + bestTowerPx + " px";
+  });
+
+  function tryJump() {
+    if (!hero.grounded) return;
+    hero.vy = JUMP_V;
+    hero.grounded = false;
+  }
+
+  onKeyPress("space", () => {
+    if (lorax && loraxCarried) {
+      if (nearTrashForDump()) {
+        destroy(lorax);
+        lorax = null;
+        loraxCarried = false;
+        resetLoraxSpawnTimer();
+      } else {
+        loraxCarried = false;
+        const cx = clamp(hero.pos.x + hero.face * 48, 26, W - 26);
+        lorax.pos.x = cx;
+        lorax.pos.y = getSupportSurfaceForFeet(cx, groundTopAt(cx, 10) + 80) - LORAX_H / 2;
+        lorax.z = 13;
+      }
+      return;
+    }
+    if (carrying) {
+      tryPutDown();
+      return;
+    }
+    if (nearLoraxForPickup() && hero.grounded) {
+      loraxCarried = true;
+      return;
+    }
+    const near = pickNearbyBox();
+    if (near && hero.grounded) {
+      near.carried = true;
+      carrying = near;
+      near.obj.z = 15;
+      return;
+    }
+    tryJump();
+  });
+  onKeyPress("w", tryJump);
+  onKeyPress("up", tryJump);
+
+  add([
+    text("Lorax smashes stacks ~20s · Space grab him · Dump in TRASH (left) · W/Up jump", { size: 10 }),
+    pos(W / 2, 14),
+    anchor("top"),
+    color(25, 40, 55),
+    z(20),
+  ]);
+});
+
+go("game");
+</script>
+</body>
+</html>
