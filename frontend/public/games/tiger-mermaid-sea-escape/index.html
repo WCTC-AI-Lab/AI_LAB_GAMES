@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tiger Mermaid Sea Escape</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+const W = 800;
+const H = 520;
+const PAD = 36;
+const MAX_SPEED = 210;
+const REVERSE_MAX = 75;
+const ACCEL = 420;
+const TURN_DEG = 155;
+const DRAG = 2.8;
+
+const LAIR = { x: W - 168, y: H - 118, w: 152, h: 108 };
+const GRAB_RANGE = 56;
+const FISH_SPEED = 62;
+const FISH_TURN_JITTER = 95;
+const NUM_FISH = 9;
+
+const HOOK_INTERVAL = 15;
+const HOOK_DESCEND = 105;
+const HOOK_FOLLOW = 2.35;
+const HOOK_CATCH_R = 36;
+const HOOK_PULL_SPEED = 380;
+
+const SHARK_INTERVAL = 30;
+const SHARK_CHASE_MAX = 15;
+const SHARK_SPEED = 102;
+const SHARK_IDLE_SPEED = 38;
+const SHARK_LEAVE_SPEED = 200;
+const SHARK_BITE_R = 48;
+
+kaplay({
+  width: W,
+  height: H,
+  background: [8, 45, 72],
+  crisp: true,
+});
+
+const ORANGE = rgb(255, 132, 42);
+const ORANGE_D = rgb(220, 95, 28);
+const STRIPE = rgb(18, 14, 12);
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function pointInLair(px, py) {
+  return px >= LAIR.x && px <= LAIR.x + LAIR.w && py >= LAIR.y && py <= LAIR.y + LAIR.h;
+}
+
+function fishSpawnPos() {
+  for (let tries = 0; tries < 40; tries++) {
+    const x = rand(PAD + 40, W - PAD - 40);
+    const y = rand(PAD + 40, H - PAD - 40);
+    if (!pointInLair(x, y) && x < LAIR.x - 50) {
+      return vec2(x, y);
+    }
+  }
+  return vec2(W * 0.35, H * 0.45);
+}
+
+function drawWaterBg(t) {
+  const layers = 24;
+  for (let i = 0; i < layers; i++) {
+    const y0 = (H / layers) * i;
+    const u = i / (layers - 1);
+    const c = rgb(
+      lerp(55, 8, u),
+      lerp(165, 35, u),
+      lerp(195, 65, u),
+    );
+    drawRect({
+      pos: vec2(0, y0),
+      width: W,
+      height: H / layers + 2,
+      color: c,
+    });
+  }
+  const rayCount = 7;
+  for (let r = 0; r < rayCount; r++) {
+    const x = (W / (rayCount + 1)) * (r + 1) + Math.sin(t * 0.4 + r) * 12;
+    drawRect({
+      pos: vec2(x - 18, 0),
+      width: 36,
+      height: H,
+      color: rgb(130, 210, 240),
+      opacity: 0.045,
+    });
+  }
+}
+
+function drawLairDecor() {
+  const x = LAIR.x;
+  const y = LAIR.y;
+  const w = LAIR.w;
+  const h = LAIR.h;
+  drawRect({
+    pos: vec2(x, y),
+    width: w,
+    height: h,
+    color: rgb(228, 200, 155),
+  });
+  for (let i = 0; i < 22; i++) {
+    const sx = x + 10 + ((i * 37) % (w - 20));
+    const sy = y + 12 + ((i * 53) % (h - 28));
+    drawCircle({
+      pos: vec2(sx, sy),
+      radius: 1.1 + (i % 3) * 0.35,
+      color: rgb(200, 175, 130),
+      opacity: 0.45,
+    });
+  }
+  drawRect({
+    pos: vec2(x + w * 0.5 - 22, y + h - 44),
+    width: 44,
+    height: 32,
+    color: rgb(190, 175, 210),
+  });
+  drawRect({
+    pos: vec2(x + w * 0.5 - 8, y + h - 52),
+    width: 16,
+    height: 12,
+    color: rgb(210, 100, 110),
+  });
+  drawRect({
+    pos: vec2(x + w * 0.5 - 32, y + h - 38),
+    width: 14,
+    height: 26,
+    color: rgb(175, 160, 195),
+  });
+  drawRect({
+    pos: vec2(x + w * 0.5 + 18, y + h - 38),
+    width: 14,
+    height: 26,
+    color: rgb(175, 160, 195),
+  });
+  drawPolygon({
+    pts: [
+      vec2(x + w * 0.5 - 28, y + h - 44),
+      vec2(x + w * 0.5, y + h - 58),
+      vec2(x + w * 0.5 + 28, y + h - 44),
+    ],
+    color: rgb(165, 145, 185),
+  });
+  drawRect({
+    pos: vec2(x + 4, y + 4),
+    width: w - 8,
+    height: 3,
+    color: rgb(180, 155, 120),
+    opacity: 0.6,
+  });
+}
+
+function stripeBand(p1, p2, count, width) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * width * 0.5;
+  const ny = (dx / len) * width * 0.5;
+  for (let i = 1; i <= count; i++) {
+    const t = i / (count + 1);
+    const mx = p1.x + dx * t;
+    const my = p1.y + dy * t;
+    drawPolygon({
+      pts: [
+        vec2(mx - nx * 0.35, my - ny * 0.35),
+        vec2(mx + nx * 0.35, my + ny * 0.35),
+        vec2(mx + nx + dx * 0.03, my + ny + dy * 0.03),
+        vec2(mx - nx + dx * 0.03, my - ny + dy * 0.03),
+      ],
+      color: STRIPE,
+    });
+  }
+}
+
+function drawTigerMermaidSimple(phase) {
+  const w = Math.sin(phase) * 5;
+
+  drawCircle({ pos: vec2(26, 0), radius: 13, color: ORANGE });
+  drawPolygon({
+    pts: [vec2(26, -13), vec2(22, -21), vec2(30, -18)],
+    color: ORANGE_D,
+  });
+  drawPolygon({
+    pts: [vec2(26, -13), vec2(34, -21), vec2(32, -16)],
+    color: ORANGE_D,
+  });
+  stripeBand(vec2(22, -8), vec2(34, 2), 2, 2);
+  stripeBand(vec2(20, 2), vec2(36, 8), 2, 2);
+
+  drawCircle({ pos: vec2(33, -4), radius: 2.2, color: rgb(35, 28, 22) });
+  drawCircle({ pos: vec2(33, 4), radius: 2.2, color: rgb(35, 28, 22) });
+
+  drawPolygon({
+    pts: [vec2(36, 5), vec2(40, 8), vec2(38, 11)],
+    color: rgb(200, 70, 65),
+  });
+
+  drawText({
+    text: "RAR",
+    size: 15,
+    pos: vec2(30, 10),
+    anchor: "center",
+    color: rgb(40, 25, 15),
+  });
+
+  const bx = -4;
+  drawPolygon({
+    pts: [
+      vec2(12, -7),
+      vec2(12, 7),
+      vec2(bx - 28, 9 + w * 0.15),
+      vec2(bx - 40, 3 + w),
+      vec2(bx - 44, 0 + w * 0.5),
+      vec2(bx - 40, -3 - w),
+      vec2(bx - 28, -9 - w * 0.15),
+    ],
+    color: ORANGE,
+  });
+  stripeBand(vec2(8, -5), vec2(bx - 22, 4), 3, 2.6);
+  stripeBand(vec2(8, 5), vec2(bx - 22, -4), 3, 2.6);
+  stripeBand(vec2(4, 0), vec2(bx - 32, 0), 2, 2.8);
+
+  const fx = bx - 44 + w * 0.4;
+  drawPolygon({
+    pts: [
+      vec2(fx, w * 0.3),
+      vec2(fx - 22, -14 + w * 0.6),
+      vec2(fx - 14, w * 0.2),
+      vec2(fx - 22, 14 - w * 0.6),
+    ],
+    color: ORANGE_D,
+  });
+  stripeBand(vec2(fx - 2, -5), vec2(fx - 16, -10), 2, 2);
+  stripeBand(vec2(fx - 2, 5), vec2(fx - 16, 10), 2, 2);
+}
+
+/** Simple fish in local space, facing +X */
+function drawFishShape(col, tailCol, phase, sizeMult) {
+  drawFishShapeAt(vec2(0, 0), col, tailCol, phase, sizeMult ?? 1);
+}
+
+function drawFishingHook(hx, hy) {
+  drawLine({
+    p1: vec2(hx, 0),
+    p2: vec2(hx, hy - 6),
+    width: 2.5,
+    color: rgb(210, 215, 230),
+  });
+  drawCircle({ pos: vec2(hx, hy), radius: 9, color: rgb(175, 180, 195) });
+  drawPolygon({
+    pts: [
+      vec2(hx + 6, hy + 2),
+      vec2(hx + 14, hy + 10),
+      vec2(hx + 4, hy + 12),
+    ],
+    color: rgb(155, 160, 175),
+  });
+  drawLine({
+    p1: vec2(hx + 6, hy + 2),
+    p2: vec2(hx + 12, hy + 8),
+    width: 2,
+    color: rgb(120, 125, 140),
+  });
+}
+
+function drawFishShapeAt(off, col, tailCol, phase, sizeMult) {
+  const s = sizeMult ?? 1;
+  const wob = Math.sin(phase * 2.1) * 2 * s;
+  const ox = off.x;
+  const oy = off.y;
+  drawEllipse({
+    pos: vec2(ox, oy + wob * 0.3),
+    radiusX: 10 * s,
+    radiusY: 6 * s,
+    color: col,
+  });
+  drawPolygon({
+    pts: [
+      vec2(ox - 12 * s, oy + wob),
+      vec2(ox - 22 * s, oy - 5 * s + wob),
+      vec2(ox - 22 * s, oy + 5 * s + wob),
+    ],
+    color: tailCol,
+  });
+  drawCircle({
+    pos: vec2(ox + 7 * s, oy - 1.5 * s + wob * 0.2),
+    radius: 1.6 * s,
+    color: rgb(25, 35, 55),
+  });
+}
+
+function drawSharkWorld(sx, sy, angDeg, phase) {
+  const r = (angDeg * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  function R(x, y) {
+    return vec2(c * x - s * y + sx, s * x + c * y + sy);
+  }
+  const wob = Math.sin(phase * 2.8) * 3;
+  const body = rgb(90, 105, 125);
+  const belly = rgb(175, 190, 205);
+  const dark = rgb(45, 55, 70);
+  const ptsTail = [R(-55, 0 + wob * 0.2), R(-78, -18 + wob), R(-78, 18 - wob)];
+  drawPolygon({ pts: ptsTail, color: dark });
+  drawEllipse({
+    pos: R(8, wob * 0.15),
+    radiusX: 52,
+    radiusY: 24,
+    color: body,
+  });
+  drawEllipse({
+    pos: R(12, 6 + wob * 0.1),
+    radiusX: 28,
+    radiusY: 14,
+    color: belly,
+  });
+  drawPolygon({
+    pts: [R(48, -8), R(62, -4), R(48, 2)],
+    color: body,
+  });
+  drawPolygon({
+    pts: [R(5, -22), R(-8, -28), R(0, -18)],
+    color: dark,
+  });
+  drawCircle({ pos: R(38, -6), radius: 5, color: rgb(25, 30, 40) });
+  drawCircle({ pos: R(40, -7), radius: 2, color: rgb(255, 255, 255) });
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    const px = -20 + t * 35;
+    const py = -10 + Math.sin(t * 3 + phase) * 2;
+    drawPolygon({
+      pts: [R(px, py), R(px - 5, py - 8), R(px + 4, py - 3)],
+      color: rgb(70, 82, 98),
+    });
+  }
+}
+
+function drawPearl(px, py, phase) {
+  const bob = Math.sin(phase * 2.4) * 3;
+  const x = px;
+  const y = py + bob;
+  drawCircle({
+    pos: vec2(x, y),
+    radius: 14,
+    color: rgb(255, 252, 248),
+  });
+  drawCircle({
+    pos: vec2(x - 4, y - 4),
+    radius: 4,
+    color: rgb(255, 255, 255),
+    opacity: 0.65,
+  });
+  drawCircle({
+    pos: vec2(x + 5, y + 3),
+    radius: 2.5,
+    color: rgb(240, 245, 255),
+    opacity: 0.5,
+  });
+}
+
+scene("game", () => {
+  const bubbles = [];
+  for (let i = 0; i < 55; i++) {
+    bubbles.push({
+      x: rand(0, W),
+      y: rand(0, H),
+      r: rand(2, 5),
+      vy: rand(35, 95),
+      wx: rand(0, Math.PI * 2),
+    });
+  }
+
+  let score = 0;
+  let carrying = false;
+  let carryPhase = 0;
+  let carriedData = null;
+
+  let gameOver = false;
+  const hook = { active: false, x: W * 0.5, y: -80 };
+  let hookCooldown = 0;
+
+  let shark = null;
+  let sharkCooldown = 0;
+  let levelUpTimer = 0;
+
+  let level = 1;
+  let nextPearlAt = 10;
+  let pearl = null;
+  let fishSizeMult = 1;
+
+  function getMaxSpeed() {
+    return MAX_SPEED * (1 + (level - 1) * 0.24);
+  }
+  function getReverseMax() {
+    return REVERSE_MAX * (1 + (level - 1) * 0.24);
+  }
+  function getAccel() {
+    return ACCEL * (1 + (level - 1) * 0.24);
+  }
+  function getFishSpeed() {
+    return FISH_SPEED * (1 + (level - 1) * 0.22);
+  }
+  function getHookDescend() {
+    return HOOK_DESCEND * (1 + (level - 1) * 0.1);
+  }
+  function getHookFollow() {
+    return HOOK_FOLLOW * (1 + (level - 1) * 0.1);
+  }
+  function getHookInterval() {
+    return HOOK_INTERVAL / (1 + (level - 1) * 0.07);
+  }
+  function getHookCatchR() {
+    return HOOK_CATCH_R * (1 + (level - 1) * 0.04);
+  }
+  function getSharkSpeed() {
+    return SHARK_SPEED * (1 + (level - 1) * 0.08);
+  }
+
+  const fishList = [];
+  const fishEntities = [];
+
+  function spawnFishData() {
+    const p = fishSpawnPos();
+    const cr = rand(100, 220);
+    const cg = rand(120, 220);
+    const cb = rand(80, 190);
+    const tr = Math.max(45, cr - 55);
+    const tg = Math.max(45, cg - 45);
+    const tb = Math.max(45, cb - 40);
+    return {
+      x: p.x,
+      y: p.y,
+      ang: rand(0, 360),
+      phase: rand(0, Math.PI * 2),
+      cr,
+      cg,
+      cb,
+      tr,
+      tg,
+      tb,
+      dead: false,
+    };
+  }
+
+  function resetFish(fd) {
+    const p = fishSpawnPos();
+    fd.x = p.x;
+    fd.y = p.y;
+    fd.ang = rand(0, 360);
+    fd.phase = rand(0, Math.PI * 2);
+    fd.cr = rand(100, 220);
+    fd.cg = rand(120, 220);
+    fd.cb = rand(80, 190);
+    fd.tr = Math.max(45, fd.cr - 55);
+    fd.tg = Math.max(45, fd.cg - 45);
+    fd.tb = Math.max(45, fd.cb - 40);
+    fd.dead = false;
+  }
+
+  const scoreLabel = add([
+    text("Fish eaten: 0", { size: 15 }),
+    pos(LAIR.x + LAIR.w / 2, LAIR.y + 14),
+    anchor("center"),
+    color(55, 45, 35),
+    z(25),
+  ]);
+
+  const levelLabel = add([
+    text("Level 1", { size: 14 }),
+    pos(14, H - 22),
+    anchor("botleft"),
+    color(200, 220, 245),
+    z(26),
+  ]);
+
+  add([
+    pos(0, 0),
+    z(0),
+    {
+      draw() {
+        drawWaterBg(time());
+      },
+    },
+  ]);
+
+  add([
+    pos(0, 0),
+    z(2),
+    {
+      draw() {
+        drawLairDecor();
+      },
+    },
+  ]);
+
+  add([
+    pos(0, 0),
+    z(1),
+    {
+      draw() {
+        const t = time();
+        for (const b of bubbles) {
+          drawCircle({
+            pos: vec2(b.x + Math.sin(b.wx + t * 1.5) * 14, b.y),
+            radius: b.r,
+            color: rgb(200, 235, 255),
+            opacity: 0.35,
+          });
+        }
+      },
+    },
+  ]);
+
+  add([
+    pos(0, 0),
+    z(7),
+    {
+      draw() {
+        if (!pearl || gameOver) return;
+        drawPearl(pearl.x, pearl.y, pearl.phase);
+      },
+    },
+  ]);
+
+  add([
+    pos(0, 0),
+    z(12),
+    {
+      draw() {
+        if (!hook.active || gameOver) return;
+        drawFishingHook(hook.x, hook.y);
+      },
+    },
+  ]);
+
+  add([
+    pos(0, 0),
+    z(11),
+    {
+      draw() {
+        if (!shark || gameOver) return;
+        drawSharkWorld(shark.x, shark.y, shark.ang, shark.phase);
+      },
+    },
+  ]);
+
+  const hookTimerLabel = add([
+    text("Hook in: 15s", { size: 12 }),
+    pos(W / 2, 22),
+    anchor("center"),
+    color(180, 210, 235),
+    opacity(0.85),
+    z(22),
+  ]);
+
+  const sharkTimerLabel = add([
+    text("Shark in: 30s", { size: 12 }),
+    pos(W / 2, 40),
+    anchor("center"),
+    color(200, 220, 245),
+    opacity(0.85),
+    z(22),
+  ]);
+
+  const bigLevelUp = add([
+    text("", { size: 44 }),
+    pos(W / 2, H / 2),
+    anchor("center"),
+    color(255, 230, 160),
+    z(85),
+    opacity(0),
+  ]);
+
+  const gameOverLayer = add([
+    text("", { size: 28 }),
+    pos(W / 2, H / 2 - 20),
+    anchor("center"),
+    color(255, 230, 230),
+    z(100),
+    opacity(0),
+  ]);
+
+  const gameOverSub = add([
+    text("", { size: 15 }),
+    pos(W / 2, H / 2 + 18),
+    anchor("center"),
+    color(200, 215, 235),
+    z(100),
+    opacity(0),
+  ]);
+
+  for (let i = 0; i < NUM_FISH; i++) {
+    const data = spawnFishData();
+    fishList.push(data);
+    const ent = add([
+      pos(data.x, data.y),
+      anchor("center"),
+      rotate(data.ang),
+      z(5),
+      {
+        data: data,
+        draw() {
+          const d = this.data;
+          if (d.dead) return;
+          drawFishShape(rgb(d.cr, d.cg, d.cb), rgb(d.tr, d.tg, d.tb), d.phase, fishSizeMult);
+        },
+      },
+    ]);
+    fishEntities.push(ent);
+  }
+
+  const hero = add([
+    pos(W * 0.35, H * 0.42),
+    anchor("center"),
+    rotate(0),
+    scale(0.52),
+    z(10),
+    {
+      swimPhase: 0,
+      speed: 0,
+      draw() {
+        drawTigerMermaidSimple(this.swimPhase);
+        if (carrying && carriedData) {
+          const sx = typeof this.scale === "number" ? this.scale : this.scale.x;
+          const lx = 28 / sx;
+          drawFishShapeAt(
+            vec2(lx, 0),
+            rgb(carriedData.cr, carriedData.cg, carriedData.cb),
+            rgb(carriedData.tr, carriedData.tg, carriedData.tb),
+            carryPhase,
+            fishSizeMult,
+          );
+        }
+      },
+    },
+  ]);
+
+  function applyLevelStats() {
+    const hsm = 1 + (level - 1) * 0.14;
+    const s = 0.52 * hsm;
+    if (typeof hero.scale === "number") {
+      hero.scale = s;
+    } else {
+      hero.scale.x = s;
+      hero.scale.y = s;
+    }
+    fishSizeMult = 1 + (level - 1) * 0.14;
+    levelLabel.text = "Level " + level;
+  }
+
+  applyLevelStats();
+
+  function syncFishObjs() {
+    for (let i = 0; i < fishList.length; i++) {
+      const d = fishList[i];
+      const f = fishEntities[i];
+      if (d.dead) {
+        f.pos.x = -9999;
+        f.pos.y = -9999;
+        continue;
+      }
+      f.pos.x = d.x;
+      f.pos.y = d.y;
+      f.angle = d.ang;
+    }
+  }
+
+  function tryGrab() {
+    if (gameOver) return;
+    if (carrying) return;
+    let best = null;
+    let bestD = GRAB_RANGE + 1;
+    for (const d of fishList) {
+      if (d.dead) continue;
+      const dist = Math.hypot(d.x - hero.pos.x, d.y - hero.pos.y);
+      if (dist < GRAB_RANGE && dist < bestD) {
+        bestD = dist;
+        best = d;
+      }
+    }
+    if (best) {
+      best.dead = true;
+      carriedData = best;
+      carrying = true;
+    }
+  }
+
+  function tryDeliver() {
+    if (gameOver) return;
+    if (!carrying || !carriedData) return;
+    if (!pointInLair(hero.pos.x, hero.pos.y)) return;
+    score += 1;
+    scoreLabel.text = "Fish eaten: " + score;
+    resetFish(carriedData);
+    carriedData = null;
+    carrying = false;
+    if (score >= nextPearlAt && !pearl) {
+      const p = fishSpawnPos();
+      pearl = { x: p.x, y: p.y, phase: 0 };
+    }
+  }
+
+  function activateHook() {
+    hook.active = true;
+    hook.x = clamp(hero.pos.x + rand(-55, 55), PAD + 40, W - PAD - 40);
+    hook.y = -70;
+  }
+
+  function spawnShark() {
+    shark = {
+      x: -90,
+      y: clamp(hero.pos.y + rand(-100, 100), PAD + 60, H - PAD - 60),
+      ang: 0,
+      phase: 0,
+      chaseAcc: 0,
+      leaving: false,
+    };
+  }
+
+  function triggerGameOver(title, sub) {
+    gameOver = true;
+    hook.active = false;
+    shark = null;
+    gameOverLayer.text = title;
+    gameOverSub.text = sub;
+    gameOverLayer.opacity = 1;
+    gameOverSub.opacity = 1;
+    hookTimerLabel.opacity = 0;
+    sharkTimerLabel.opacity = 0;
+  }
+
+  onUpdate(() => {
+    const d = dt();
+
+    if (levelUpTimer > 0) {
+      levelUpTimer -= d;
+      bigLevelUp.opacity = levelUpTimer > 0.45 ? 1 : Math.max(0, levelUpTimer / 0.45);
+      if (levelUpTimer <= 0) {
+        bigLevelUp.opacity = 0;
+      }
+    }
+
+    if (gameOver) {
+      hero.pos.y -= HOOK_PULL_SPEED * d;
+      hero.swimPhase += d * 12;
+      return;
+    }
+
+    if (!shark) {
+      sharkCooldown += d;
+      const srem = Math.max(0, SHARK_INTERVAL - sharkCooldown);
+      sharkTimerLabel.text = "Shark in: " + srem.toFixed(1) + "s";
+      if (sharkCooldown >= SHARK_INTERVAL) {
+        spawnShark();
+        sharkCooldown = 0;
+        sharkTimerLabel.text = "SHARK!";
+      }
+    } else {
+      shark.phase += d * 7;
+      const heroSeen = !pointInLair(hero.pos.x, hero.pos.y);
+      const tx = heroSeen ? hero.pos.x : LAIR.x + LAIR.w * 0.5;
+      const ty = heroSeen ? hero.pos.y : LAIR.y + LAIR.h * 0.45;
+      const sp = getSharkSpeed();
+
+      if (shark.leaving) {
+        shark.x -= SHARK_LEAVE_SPEED * d;
+        shark.ang = 180;
+        if (shark.x < -160) {
+          shark = null;
+          sharkCooldown = 0;
+          sharkTimerLabel.text = "Shark in: " + SHARK_INTERVAL.toFixed(1) + "s";
+        }
+      } else {
+        const dx = tx - shark.x;
+        const dy = ty - shark.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const spd = heroSeen ? sp : SHARK_IDLE_SPEED;
+        shark.x += (dx / dist) * spd * d;
+        shark.y += (dy / dist) * spd * d;
+        shark.ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+        if (heroSeen) {
+          shark.chaseAcc += d;
+        }
+        if (shark.chaseAcc >= SHARK_CHASE_MAX) {
+          shark.leaving = true;
+        }
+        if (
+          !shark.leaving &&
+          heroSeen &&
+          Math.hypot(shark.x - hero.pos.x, shark.y - hero.pos.y) < SHARK_BITE_R
+        ) {
+          triggerGameOver("Shark!", "Hide in your castle next time · Enter to retry");
+        }
+      }
+    }
+
+    if (!hook.active) {
+      hookCooldown += d;
+      const interval = getHookInterval();
+      const remain = Math.max(0, interval - hookCooldown);
+      hookTimerLabel.text = hook.active ? "" : "Hook in: " + remain.toFixed(1) + "s";
+      if (hookCooldown >= interval) {
+        activateHook();
+        hookCooldown = 0;
+        hookTimerLabel.text = "HOOK!";
+      }
+    } else {
+      hookTimerLabel.text = "Watch the hook!";
+      hook.y += getHookDescend() * d;
+      hook.x += (hero.pos.x - hook.x) * getHookFollow() * d;
+      hook.x = clamp(hook.x, PAD + 8, W - PAD - 8);
+
+      const dist = Math.hypot(hook.x - hero.pos.x, hook.y - hero.pos.y);
+      if (dist < getHookCatchR()) {
+        triggerGameOver("Caught!", "The hook got you · Enter to play again");
+      } else if (hook.y > H + 100) {
+        hook.active = false;
+        hookCooldown = 0;
+        hookTimerLabel.text = "Hook in: " + getHookInterval().toFixed(1) + "s";
+      }
+    }
+
+    for (const b of bubbles) {
+      b.y -= b.vy * d;
+      b.x += Math.cos(b.wx + time() * 2) * 28 * d;
+      if (b.y < -12) {
+        b.y = H + rand(12, 80);
+        b.x = rand(0, W);
+      }
+    }
+
+    for (const fd of fishList) {
+      if (fd.dead) continue;
+      fd.phase += d * 6;
+      fd.ang += rand(-FISH_TURN_JITTER, FISH_TURN_JITTER) * d;
+      const rad = (fd.ang * Math.PI) / 180;
+      const fs = getFishSpeed();
+      fd.x += Math.cos(rad) * fs * d;
+      fd.y += Math.sin(rad) * fs * d;
+      fd.x = clamp(fd.x, PAD + 20, W - PAD - 20);
+      fd.y = clamp(fd.y, PAD + 20, H - PAD - 20);
+      if (pointInLair(fd.x, fd.y)) {
+        fd.x = LAIR.x - 22;
+        fd.y = clamp(fd.y, LAIR.y + 10, LAIR.y + LAIR.h - 10);
+      }
+    }
+    syncFishObjs();
+
+    if (gameOver) return;
+
+    let turn = 0;
+    if (isKeyDown("left") || isKeyDown("a")) turn -= 1;
+    if (isKeyDown("right") || isKeyDown("d")) turn += 1;
+    const maxSp = getMaxSpeed();
+    const speedRatio = Math.abs(hero.speed) / maxSp;
+    const turnMul = 1 + speedRatio * 0.45;
+    hero.angle += turn * TURN_DEG * turnMul * d;
+
+    if (isKeyDown("up") || isKeyDown("w")) {
+      hero.speed = Math.min(hero.speed + getAccel() * d, maxSp);
+    } else if (isKeyDown("down") || isKeyDown("s")) {
+      hero.speed = Math.max(hero.speed - getAccel() * d, -getReverseMax());
+    } else {
+      const drag = Math.exp(-DRAG * d);
+      hero.speed *= drag;
+      if (Math.abs(hero.speed) < 4) hero.speed = 0;
+    }
+
+    const rad = (hero.angle * Math.PI) / 180;
+    const dx = Math.cos(rad) * hero.speed * d;
+    const dy = Math.sin(rad) * hero.speed * d;
+    hero.pos.x += dx;
+    hero.pos.y += dy;
+    hero.pos.x = clamp(hero.pos.x, PAD, W - PAD);
+    hero.pos.y = clamp(hero.pos.y, PAD, H - PAD);
+
+    hero.swimPhase += d * (7 + Math.abs(hero.speed) * 0.08);
+    if (carrying) {
+      carryPhase += d * 10;
+      tryDeliver();
+    }
+
+    if (pearl && !gameOver) {
+      pearl.phase += d * 6;
+      if (Math.hypot(pearl.x - hero.pos.x, pearl.y - hero.pos.y) < 44) {
+        level += 1;
+        nextPearlAt += 10;
+        pearl = null;
+        applyLevelStats();
+        bigLevelUp.text = "LEVEL " + level + "!";
+        bigLevelUp.opacity = 1;
+        levelUpTimer = 2.2;
+      }
+    }
+  });
+
+  add([
+    text("↑ forward  ·  Space grab  ·  Pearl = big level up  ·  Hide in castle from shark  ·  Enter reset", { size: 9 }),
+    pos(12, 10),
+    color(200, 230, 255),
+    z(20),
+  ]);
+
+  onKeyPress("space", () => {
+    if (gameOver) return;
+    tryGrab();
+  });
+
+  onKeyPress("enter", () => {
+    go("game");
+  });
+});
+
+go("game");
+</script>
+</body>
+</html>

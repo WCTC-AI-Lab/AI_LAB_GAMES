@@ -42,15 +42,18 @@ Say something like (adjust to sound natural):
 >
 > Ready? What do you want to make?
 
-### 2. Create a new empty game
+### 2. Create a new game — copy the template (DO NOT write code from scratch)
 
 - If they already said a name or concept (e.g. "space shooter"), slugify it: "space shooter" → `space-shooter`.
 - If not, use `my-game` as a temporary slug (it gets renamed when they `/finish`).
-- Create `frontend/public/games/{id}/index.html`. Copy the structure from an existing game: same `<!DOCTYPE>`, `<style>`, `body`/`canvas` CSS, and `<script src="../_lib/kaplay.js">`. Inside the script:
-  - `kaplay({ width: 440, height: 440, background: [15, 23, 42], crisp: true });`
-  - `scene("game", () => { add([text("Your game", { size: 24 }), pos(220, 220), anchor("center"), color(245,245,245)]); add([text("Score: 0", { size: 16 }), pos(20, 20), color(200,200,210)]); });`
-  - `go("game");`
+- **FAST PATH — use a shell command to copy the template:**
+  ```
+  cp "frontend/public/games/_template/index.html" "frontend/public/games/{id}/index.html"
+  ```
+  This is one shell command. Do NOT rewrite the file contents from scratch.
+- The template already has: 800×520 canvas and an **empty** game scene (no player or movement until you add it).
 - Add the game to `frontend/public/games/games.json` (id, name, description, path, author, tags).
+- If the kid told you a concept (space shooter, dinosaur, etc.), do ONE small tweak to the copied file to reflect it — e.g. change the player color or the title text. Keep it minimal; iterate from there.
 
 ### 3. Build and start the dev server
 

@@ -1,5 +1,23 @@
 [
   {
+    "id": "tiger-mermaid-sea-escape",
+    "name": "Tiger Mermaid Sea Escape",
+    "description": "Deliver fish to your sandy lair, grab pearls to level up (bigger & faster), dodge hooks and outlast a shark—hide in the castle. Enter restarts.",
+    "path": "/games/tiger-mermaid-sea-escape/index.html",
+    "thumbnail": "/games/tiger-mermaid-sea-escape/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "arcade", "starter"]
+  },
+  {
+    "id": "pickle-lorax-tower",
+    "name": "Pickle Survives the Lorax Tower",
+    "description": "Stack boxes for height — a mischievous Lorax smashes your tower unless you grab him and dump him in the trash. WASD move, W/Up jump, Space grab/drop.",
+    "path": "/games/pickle-lorax-tower/index.html",
+    "thumbnail": "/games/pickle-lorax-tower/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "arcade", "stacking"]
+  },
+  {
     "id": "pong",
     "name": "2-Player Pong",
     "description": "Classic paddle game. Challenge a friend with W/S and Arrow keys.",
@@ -52,5 +70,23 @@
     "thumbnail": "/games/breakout-tetris-2/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo"]
+  },
+  {
+    "id": "mac-pan",
+    "name": "Mac Pan",
+    "description": "Chomp apples, clear levels, and dodge pink foes. Stay out of the blue ponds — only you sink! Arrows to move, Space to retry after game over.",
+    "path": "/games/mac-pan/index.html",
+    "thumbnail": "/games/mac-pan/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "arcade"]
+  },
+  {
+    "id": "stewart-and-the-orca",
+    "name": "Stewart and the Orca",
+    "description": "Maze arenas with zombies, med kits, and an orca helper when HP is low. Three mazes, aim with mouse, Space fires every 3s. Clear all zombies to advance.",
+    "path": "/games/stewart-and-the-orca/index.html",
+    "thumbnail": "/games/stewart-and-the-orca/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "maze", "arcade"]
   }
 ]
