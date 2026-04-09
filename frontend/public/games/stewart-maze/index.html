@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stewart's Maze</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    cursor: crosshair;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+const W = 800;
+const H = 520;
+const SPEED = 220;
+const PAD = 40;
+const FIRE_SPEED = 440;
+/** One shot every 3 seconds (Stewart + orca helper). */
+const SHOT_COOLDOWN = 3;
+const BULLET_R = 5;
+const NUM_ZOMBIES = 12;
+/** Zombies wander until Stewart is this close, then they chase. */
+const CHASE_DIST = 100;
+const CHASE_DIST_SQ = CHASE_DIST * CHASE_DIST;
+/** Orca helper: shoots only at zombies within this range. */
+const ORCA_SHOOT_RANGE = 100;
+const ORCA_SHOOT_RANGE_SQ = ORCA_SHOOT_RANGE * ORCA_SHOOT_RANGE;
+const ORCA_SPEED = 125;
+const ORCA_R = 16;
+const WATER_SPEED = 400;
+const WATER_SHOT_COOLDOWN = 3;
+/** Med kit: walk over to heal (does not add lives). */
+const MEDKIT_R = 14;
+const MEDKIT_HEAL = 45;
+const MEDKIT_SPAWN_INTERVAL = 10;
+const MAX_MEDKITS_ON_FIELD = 3;
+/** Hit radius for Stewart (smaller so he fits the maze). */
+const PLAYER_R = 14;
+const MAX_HP = 100;
+const DAMAGE_PER_HIT = 25;
+const INVULN_TIME = 0.9;
+const START_LIVES = 3;
+
+kaplay({
+  width: W,
+  height: H,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+function dist2(ax, ay, bx, by) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+/** Three maze layouts; each level uses one + a safe spawn point. */
+const WT = 10;
+const MAZE_LEVELS = [
+  {
+    name: "I",
+    spawn: { x: 100, y: 385 },
+    walls: [
+      { x: 210, y: 70, w: WT, h: 175 },
+      { x: 210, y: 288, w: WT, h: 192 },
+      { x: 210, y: 130, w: 115, h: WT },
+      { x: 210, y: 345, w: 95, h: WT },
+      { x: 95, y: 255, w: 405, h: WT },
+      { x: 355, y: 155, w: WT, h: 95 },
+      { x: 425, y: 255, w: WT, h: 115 },
+      { x: 595, y: 68, w: WT, h: 150 },
+      { x: 595, y: 272, w: WT, h: 208 },
+      { x: 595, y: 198, w: 100, h: WT },
+      { x: 88, y: 418, w: 395, h: WT },
+      { x: 668, y: 338, w: 78, h: WT },
+      { x: 736, y: 338, w: WT, h: 88 },
+      { x: 668, y: 416, w: 78, h: WT },
+      { x: 668, y: 338, w: WT, h: 88 },
+    ],
+  },
+  {
+    name: "II",
+    spawn: { x: 120, y: 100 },
+    walls: [
+      { x: 60, y: 180, w: 320, h: WT },
+      { x: 60, y: 180, w: WT, h: 260 },
+      { x: 420, y: 60, w: WT, h: 200 },
+      { x: 420, y: 240, w: 280, h: WT },
+      { x: 520, y: 240, w: WT, h: 200 },
+      { x: 200, y: 320, w: 380, h: WT },
+      { x: 200, y: 320, w: WT, h: 140 },
+      { x: 690, y: 120, w: WT, h: 280 },
+      { x: 300, y: 60, w: 200, h: WT },
+      { x: 300, y: 60, w: WT, h: 90 },
+    ],
+  },
+  {
+    name: "III",
+    spawn: { x: 680, y: 420 },
+    walls: [
+      { x: 80, y: 80, w: 640, h: WT },
+      { x: 80, y: 420, w: 520, h: WT },
+      { x: 80, y: 80, w: WT, h: 340 },
+      { x: 380, y: 140, w: WT, h: 200 },
+      { x: 380, y: 140, w: 220, h: WT },
+      { x: 590, y: 140, w: WT, h: 180 },
+      { x: 250, y: 260, w: 350, h: WT },
+      { x: 250, y: 260, w: WT, h: 120 },
+      { x: 480, y: 300, w: WT, h: 120 },
+      { x: 600, y: 260, w: 100, h: WT },
+      { x: 710, y: 80, w: WT, h: 200 },
+    ],
+  },
+];
+
+function circleRectOverlap(cx, cy, r, bx, by, bw, bh) {
+  const nx = clamp(cx, bx, bx + bw);
+  const ny = clamp(cy, by, by + bh);
+  const dx = cx - nx;
+  const dy = cy - ny;
+  return dx * dx + dy * dy < r * r;
+}
+
+function circleHitsAnyWall(cx, cy, r, walls) {
+  for (let i = 0; i < walls.length; i++) {
+    const b = walls[i];
+    if (circleRectOverlap(cx, cy, r, b.x, b.y, b.w, b.h)) return true;
+  }
+  return false;
+}
+
+function resolveCircleFromWall(cx, cy, r, bx, by, bw, bh) {
+  const closestX = clamp(cx, bx, bx + bw);
+  const closestY = clamp(cy, by, by + bh);
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  const d = Math.hypot(dx, dy);
+  if (d >= r - 1e-4 || d < 1e-6) return null;
+  const nx = dx / d;
+  const ny = dy / d;
+  const push = r - d + 0.5;
+  return { cx: cx + nx * push, cy: cy + ny * push, nx: nx, ny: ny };
+}
+
+function resolveCircleAgainstWalls(cx, cy, r, walls) {
+  let x = cx;
+  let y = cy;
+  for (let pass = 0; pass < 10; pass++) {
+    let moved = false;
+    for (let i = 0; i < walls.length; i++) {
+      const b = walls[i];
+      const res = resolveCircleFromWall(x, y, r, b.x, b.y, b.w, b.h);
+      if (res) {
+        x = res.cx;
+        y = res.cy;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return { x: x, y: y };
+}
+
+function resolveZombieAgainstWalls(z, walls) {
+  const r = z.r;
+  for (let pass = 0; pass < 6; pass++) {
+    for (let i = 0; i < walls.length; i++) {
+      const b = walls[i];
+      const res = resolveCircleFromWall(z.pos.x, z.pos.y, r, b.x, b.y, b.w, b.h);
+      if (res) {
+        z.pos.x = res.cx;
+        z.pos.y = res.cy;
+        if (Math.abs(res.nx) > Math.abs(res.ny)) z.vx *= -1;
+        else z.vy *= -1;
+      }
+    }
+  }
+}
+
+function isSpawnClear(cx, cy, r, walls) {
+  if (cx < PAD + r || cx > W - PAD - r || cy < PAD + 20 + r || cy > H - PAD - r) return false;
+  return !circleHitsAnyWall(cx, cy, r, walls);
+}
+
+/**
+ * True if nothing blocks sight along the segment (maze walls are opaque).
+ * Samples along the line so thin walls are not missed.
+ */
+function hasLineOfSight(x1, y1, x2, y2, walls) {
+  const dist = Math.hypot(x2 - x1, y2 - y1);
+  if (dist < 0.5) return true;
+  const step = 1;
+  const steps = Math.max(10, Math.ceil(dist / step));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const sx = x1 + (x2 - x1) * t;
+    const sy = y1 + (y2 - y1) * t;
+    for (let wi = 0; wi < walls.length; wi++) {
+      const b = walls[wi];
+      if (sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+scene("game", () => {
+  let levelIndex = 0;
+  let mazeWalls = MAZE_LEVELS[levelIndex].walls;
+  const wallObjs = [];
+
+  function buildMazeGraphics() {
+    for (let i = 0; i < wallObjs.length; i++) {
+      destroy(wallObjs[i]);
+    }
+    wallObjs.length = 0;
+    for (let wi = 0; wi < mazeWalls.length; wi++) {
+      const wall = mazeWalls[wi];
+      const o = add([
+        rect(wall.w, wall.h),
+        pos(wall.x, wall.y),
+        color(51, 65, 85),
+        outline(2, rgb(30, 41, 59)),
+        z(1),
+      ]);
+      wallObjs.push(o);
+    }
+  }
+
+  /** Start position comes from current maze. */
+  let px = MAZE_LEVELS[0].spawn.x;
+  let py = MAZE_LEVELS[0].spawn.y;
+  /** Aim direction toward cursor (normalized); default faces right. */
+  let dirX = 1;
+  let dirY = 0;
+  let shotCd = 0;
+  let score = 0;
+  let hp = MAX_HP;
+  let lives = START_LIVES;
+  let invuln = 0;
+  let gameOver = false;
+  const stewartParts = [];
+
+  const bullets = [];
+  const zombies = [];
+  const medkits = [];
+  let medkitSpawnAcc = 0;
+  /** { body, tag, ox, oy, shotCd } or null */
+  let orca = null;
+
+  buildMazeGraphics();
+
+  /** Samus-style suit (scaled down for maze corridors). */
+  const torso = add([
+    rect(20, 28, { radius: 4 }),
+    pos(px, py),
+    anchor("center"),
+    color(220, 95, 35),
+    z(5),
+  ]);
+  stewartParts.push(torso);
+  const shoulderL = add([
+    circle(6),
+    pos(px - 12, py - 4),
+    anchor("center"),
+    color(200, 80, 28),
+    z(5),
+  ]);
+  stewartParts.push(shoulderL);
+  const shoulderR = add([
+    circle(6),
+    pos(px + 12, py - 4),
+    anchor("center"),
+    color(200, 80, 28),
+    z(5),
+  ]);
+  stewartParts.push(shoulderR);
+  const helmet = add([
+    rect(19, 12, { radius: 3 }),
+    pos(px, py - 18),
+    anchor("center"),
+    color(120, 130, 145),
+    z(6),
+  ]);
+  stewartParts.push(helmet);
+  const visor = add([
+    rect(14, 5, { radius: 2 }),
+    pos(px, py - 18),
+    anchor("center"),
+    color(45, 210, 120),
+    z(7),
+  ]);
+  stewartParts.push(visor);
+  const cannon = add([
+    rect(15, 8, { radius: 2 }),
+    pos(px + 16, py + 4),
+    anchor("center"),
+    rotate(0),
+    color(71, 85, 105),
+    outline(2, rgb(30, 41, 59)),
+    z(6),
+  ]);
+  stewartParts.push(cannon);
+  const nameTag = add([
+    text("Stewart", { size: 10 }),
+    pos(px, py - 36),
+    anchor("center"),
+    color(226, 232, 240),
+    z(10),
+  ]);
+  stewartParts.push(nameTag);
+
+  const scoreLabel = add([
+    text("Score: 0", { size: 18 }),
+    pos(14, 12),
+    color(250, 204, 21),
+    z(10),
+  ]);
+
+  const healthLabel = add([
+    text("HP: " + hp + " / " + MAX_HP, { size: 15 }),
+    pos(W - 14, 12),
+    anchor("topright"),
+    color(96, 250, 180),
+    z(10),
+  ]);
+
+  const livesLabel = add([
+    text("Lives: " + lives, { size: 15 }),
+    pos(W - 14, 32),
+    anchor("topright"),
+    color(248, 250, 252),
+    z(10),
+  ]);
+
+  const levelLabel = add([
+    text("Maze I / III", { size: 14 }),
+    pos(W / 2, 12),
+    anchor("top"),
+    color(250, 204, 21),
+    z(10),
+  ]);
+
+  let gameOverTitle = null;
+  let gameOverHint = null;
+
+  add([
+    text("Clear all zombies → next maze  ·  Aim+Space (3s)  ·  WASD  ·  ✚  ·  HP≤50: Orca helper", { size: 8 }),
+    pos(W / 2, H - 16),
+    anchor("center"),
+    color(148, 163, 184),
+    opacity(0.75),
+    z(10),
+  ]);
+
+  /**
+   * Different enemies: shamblers, runners, brutes — different speed, size, points.
+   * Name is not `z` — Kaplay's z-index helper is also called `z()`.
+   */
+  function spawnEnemy() {
+    const roll = Math.random();
+    let kind;
+    if (roll < 0.48) {
+      kind = {
+        r: 11,
+        speed: 52,
+        pts: 1,
+        emoji: "🧟",
+        bw: 18,
+        bh: 22,
+        body: [55, 110, 65],
+        line: [30, 70, 40],
+        faceSize: 18,
+      };
+    } else if (roll < 0.78) {
+      kind = {
+        r: 9,
+        speed: 86,
+        pts: 2,
+        emoji: "💀",
+        bw: 16,
+        bh: 20,
+        body: [100, 85, 120],
+        line: [60, 50, 80],
+        faceSize: 16,
+      };
+    } else {
+      kind = {
+        r: 16,
+        speed: 36,
+        pts: 3,
+        emoji: "🧟",
+        bw: 26,
+        bh: 30,
+        body: [45, 75, 50],
+        line: [25, 50, 30],
+        faceSize: 22,
+      };
+    }
+
+    let zx = PAD + kind.r;
+    let zy = PAD + kind.r;
+    for (let tries = 0; tries < 55; tries++) {
+      zx = PAD + kind.r + Math.random() * (W - 2 * PAD - kind.r * 2);
+      zy = PAD + kind.r + Math.random() * (H - 2 * PAD - kind.r * 2 - 30);
+      if (dist2(zx, zy, px, py) > 70 * 70 && isSpawnClear(zx, zy, kind.r, mazeWalls)) break;
+    }
+    const sn = resolveCircleAgainstWalls(zx, zy, kind.r, mazeWalls);
+    zx = sn.x;
+    zy = sn.y;
+    const ang = Math.random() * Math.PI * 2;
+    const enemy = add([
+      rect(kind.bw, kind.bh, { radius: 5 }),
+      pos(zx, zy),
+      anchor("center"),
+      color(kind.body[0], kind.body[1], kind.body[2]),
+      outline(2, rgb(kind.line[0], kind.line[1], kind.line[2])),
+      z(3),
+    ]);
+    const zFace = add([
+      text(kind.emoji, { size: kind.faceSize }),
+      pos(zx, zy - 2),
+      anchor("center"),
+      z(4),
+    ]);
+    enemy.r = kind.r;
+    enemy.points = kind.pts;
+    enemy.baseSpeed = kind.speed;
+    enemy.vx = Math.cos(ang) * kind.speed;
+    enemy.vy = Math.sin(ang) * kind.speed;
+    enemy.driftTimer = 1.2 + Math.random() * 1.8;
+    enemy.face = zFace;
+    zombies.push(enemy);
+  }
+
+  function spawnOrca() {
+    if (orca) return;
+    let ox = px + 50;
+    let oy = py;
+    const sn = resolveCircleAgainstWalls(ox, oy, ORCA_R, mazeWalls);
+    ox = sn.x;
+    oy = sn.y;
+    /** Killer whale (orca): black + white patches, not blue whale emoji. */
+    const body = add([
+      pos(ox, oy),
+      anchor("center"),
+      z(7),
+      {
+        draw() {
+          drawRect({
+            pos: vec2(-26, -8),
+            width: 52,
+            height: 20,
+            radius: 10,
+            color: rgb(10, 12, 18),
+          });
+          drawRect({
+            pos: vec2(2, -12),
+            width: 22,
+            height: 14,
+            radius: 4,
+            color: rgb(245, 248, 255),
+          });
+          drawRect({
+            pos: vec2(-34, -4),
+            width: 8,
+            height: 18,
+            radius: 2,
+            color: rgb(10, 12, 18),
+          });
+          drawRect({
+            pos: vec2(20, -6),
+            width: 5,
+            height: 4,
+            radius: 1,
+            color: rgb(255, 255, 255),
+          });
+          drawRect({
+            pos: vec2(-10, 2),
+            width: 28,
+            height: 6,
+            radius: 3,
+            color: rgb(26, 30, 38),
+          });
+        },
+      },
+    ]);
+    const tag = add([
+      text("Orca", { size: 9 }),
+      pos(ox, oy - 30),
+      anchor("center"),
+      color(200, 225, 255),
+      z(7),
+    ]);
+    orca = { body: body, tag: tag, ox: ox, oy: oy, shotCd: 0 };
+  }
+
+  function shootWater(fromX, fromY, dirx, diry) {
+    const b = add([
+      circle(BULLET_R + 2),
+      pos(fromX, fromY),
+      anchor("center"),
+      color(56, 189, 248),
+      outline(1, rgb(186, 230, 253)),
+      z(8),
+    ]);
+    b.vx = dirx * WATER_SPEED;
+    b.vy = diry * WATER_SPEED;
+    b.life = 1.2;
+    b.orcaWater = true;
+    bullets.push(b);
+  }
+
+  function spawnMedKit() {
+    if (medkits.length >= MAX_MEDKITS_ON_FIELD) return;
+    let kx = W / 2;
+    let ky = H / 2;
+    for (let tries = 0; tries < 45; tries++) {
+      kx = PAD + 40 + Math.random() * (W - 2 * PAD - 80);
+      ky = PAD + 40 + Math.random() * (H - 2 * PAD - 80);
+      if (dist2(kx, ky, px, py) > 80 * 80 && isSpawnClear(kx, ky, MEDKIT_R, mazeWalls)) break;
+    }
+    const ks = resolveCircleAgainstWalls(kx, ky, MEDKIT_R, mazeWalls);
+    kx = ks.x;
+    ky = ks.y;
+    const kit = add([
+      rect(24, 20, { radius: 4 }),
+      pos(kx, ky),
+      anchor("center"),
+      color(250, 250, 252),
+      outline(2, rgb(220, 70, 90)),
+      z(2),
+    ]);
+    const kitMark = add([
+      text("✚", { size: 17 }),
+      pos(kx, ky),
+      anchor("center"),
+      color(220, 70, 90),
+      z(3),
+    ]);
+    kit.mark = kitMark;
+    medkits.push(kit);
+  }
+
+  function updateLevelLabel() {
+    const roman = ["I", "II", "III"][levelIndex];
+    levelLabel.text = "Maze " + roman + " / III";
+  }
+
+  function advanceLevel() {
+    levelIndex = (levelIndex + 1) % MAZE_LEVELS.length;
+    mazeWalls = MAZE_LEVELS[levelIndex].walls;
+    const sp = MAZE_LEVELS[levelIndex].spawn;
+    px = sp.x;
+    py = sp.y;
+    const pr0 = resolveCircleAgainstWalls(px, py, PLAYER_R, mazeWalls);
+    px = pr0.x;
+    py = pr0.y;
+
+    for (let bi = bullets.length - 1; bi >= 0; bi--) {
+      destroy(bullets[bi]);
+      bullets.splice(bi, 1);
+    }
+    for (let mi = medkits.length - 1; mi >= 0; mi--) {
+      const k = medkits[mi];
+      if (k.mark) destroy(k.mark);
+      destroy(k);
+      medkits.splice(mi, 1);
+    }
+    medkitSpawnAcc = 0;
+
+    if (orca) {
+      orca.ox = px + 48;
+      orca.oy = py;
+      const ores = resolveCircleAgainstWalls(orca.ox, orca.oy, ORCA_R, mazeWalls);
+      orca.ox = ores.x;
+      orca.oy = ores.y;
+      orca.shotCd = 0;
+    }
+
+    buildMazeGraphics();
+    updateLevelLabel();
+
+    for (let i = 0; i < NUM_ZOMBIES; i++) spawnEnemy();
+    spawnMedKit();
+  }
+
+  updateLevelLabel();
+
+  for (let i = 0; i < NUM_ZOMBIES; i++) spawnEnemy();
+  spawnMedKit();
+
+  function shoot() {
+    const ox = px + dirX * 22;
+    const oy = py + dirY * 22;
+    const b = add([
+      circle(BULLET_R + 2),
+      pos(ox, oy),
+      anchor("center"),
+      color(255, 160, 40),
+      outline(1, rgb(255, 220, 80)),
+      z(8),
+    ]);
+    b.vx = dirX * FIRE_SPEED;
+    b.vy = dirY * FIRE_SPEED;
+    b.life = 1.2;
+    bullets.push(b);
+  }
+
+  function syncStewart() {
+    torso.pos.x = px;
+    torso.pos.y = py;
+    shoulderL.pos.x = px - 12;
+    shoulderL.pos.y = py - 4;
+    shoulderR.pos.x = px + 12;
+    shoulderR.pos.y = py - 4;
+    helmet.pos.x = px;
+    helmet.pos.y = py - 18;
+    visor.pos.x = px;
+    visor.pos.y = py - 18;
+    const cannonDist = 16;
+    cannon.pos.x = px + dirX * cannonDist;
+    cannon.pos.y = py + dirY * cannonDist;
+    cannon.angle = Math.atan2(dirY, dirX) * (180 / Math.PI);
+    nameTag.pos.x = px;
+    nameTag.pos.y = py - 36;
+    const dim = invuln > 0 ? 0.52 : 1;
+    for (let i = 0; i < stewartParts.length; i++) {
+      stewartParts[i].opacity = dim;
+    }
+  }
+
+  function refreshHud() {
+    healthLabel.text = "HP: " + Math.max(0, Math.round(hp)) + " / " + MAX_HP;
+    livesLabel.text = "Lives: " + lives;
+  }
+
+  function showGameOverOverlay() {
+    gameOverTitle = add([
+      text("GAME OVER", { size: 34 }),
+      pos(W / 2, H / 2 - 30),
+      anchor("center"),
+      color(248, 113, 113),
+      z(20),
+    ]);
+    gameOverHint = add([
+      text("Score: " + score + "  ·  Space or Enter to retry", { size: 14 }),
+      pos(W / 2, H / 2 + 20),
+      anchor("center"),
+      color(226, 232, 240),
+      z(20),
+    ]);
+  }
+
+  onKeyPress("space", () => {
+    if (gameOver) go("game");
+  });
+  onKeyPress("enter", () => {
+    if (gameOver) go("game");
+  });
+
+  onUpdate(() => {
+    const d = dt();
+
+    if (gameOver) {
+      return;
+    }
+
+    invuln = Math.max(0, invuln - d);
+
+    let mx = 0;
+    let my = 0;
+    if (isKeyDown("left") || isKeyDown("a")) mx -= 1;
+    if (isKeyDown("right") || isKeyDown("d")) mx += 1;
+    if (isKeyDown("up") || isKeyDown("w")) my -= 1;
+    if (isKeyDown("down") || isKeyDown("s")) my += 1;
+
+    if (shotCd > 0) shotCd -= d;
+    if (isKeyDown("space") && shotCd <= 0) {
+      shotCd = SHOT_COOLDOWN;
+      shoot();
+    }
+
+    px += mx * (SPEED * d) / (mx !== 0 && my !== 0 ? Math.SQRT2 : 1);
+    py += my * (SPEED * d) / (mx !== 0 && my !== 0 ? Math.SQRT2 : 1);
+
+    px = clamp(px, PAD, W - PAD);
+    py = clamp(py, PAD + 20, H - PAD);
+    const pr = resolveCircleAgainstWalls(px, py, PLAYER_R, mazeWalls);
+    px = pr.x;
+    py = pr.y;
+
+    const mp = mousePos();
+    const ax = mp.x - px;
+    const ay = mp.y - py;
+    const alen = Math.hypot(ax, ay);
+    if (alen > 2) {
+      dirX = ax / alen;
+      dirY = ay / alen;
+    }
+
+    for (let i = zombies.length - 1; i >= 0; i--) {
+      const z = zombies[i];
+      const zr = z.r;
+      const sp = z.baseSpeed;
+      const dx = px - z.pos.x;
+      const dy = py - z.pos.y;
+      const dsq = dx * dx + dy * dy;
+      const canSeePlayer =
+        dsq < CHASE_DIST_SQ && dsq > 1 && hasLineOfSight(z.pos.x, z.pos.y, px, py, mazeWalls);
+      if (canSeePlayer) {
+        const inv = 1 / Math.sqrt(dsq);
+        z.vx = dx * inv * sp;
+        z.vy = dy * inv * sp;
+      } else {
+        z.driftTimer -= d;
+        if (z.driftTimer <= 0) {
+          z.driftTimer = 1.4 + Math.random() * 2.2;
+          const na = Math.random() * Math.PI * 2;
+          z.vx = Math.cos(na) * sp;
+          z.vy = Math.sin(na) * sp;
+        }
+      }
+      z.pos.x += z.vx * d;
+      z.pos.y += z.vy * d;
+      if (z.face) {
+        z.face.pos.x = z.pos.x;
+        z.face.pos.y = z.pos.y - 2;
+      }
+      if (z.pos.x < PAD + zr) {
+        z.pos.x = PAD + zr;
+        z.vx *= -1;
+      } else if (z.pos.x > W - PAD - zr) {
+        z.pos.x = W - PAD - zr;
+        z.vx *= -1;
+      }
+      if (z.pos.y < PAD + zr) {
+        z.pos.y = PAD + zr;
+        z.vy *= -1;
+      } else if (z.pos.y > H - PAD - zr) {
+        z.pos.y = H - PAD - zr;
+        z.vy *= -1;
+      }
+      resolveZombieAgainstWalls(z, mazeWalls);
+    }
+
+    if (!orca && hp <= 50 && hp > 0) {
+      spawnOrca();
+    }
+
+    if (orca) {
+      orca.shotCd = Math.max(0, orca.shotCd - d);
+      let best = null;
+      let bestD2 = 1e15;
+      for (let zi = 0; zi < zombies.length; zi++) {
+        const zm = zombies[zi];
+        if (!hasLineOfSight(orca.ox, orca.oy, zm.pos.x, zm.pos.y, mazeWalls)) continue;
+        const t = dist2(orca.ox, orca.oy, zm.pos.x, zm.pos.y);
+        if (t < bestD2) {
+          bestD2 = t;
+          best = zm;
+        }
+      }
+      if (best) {
+        const odx = best.pos.x - orca.ox;
+        const ody = best.pos.y - orca.oy;
+        const olen = Math.hypot(odx, ody);
+        if (olen > 2) {
+          orca.ox += (odx / olen) * ORCA_SPEED * d;
+          orca.oy += (ody / olen) * ORCA_SPEED * d;
+        }
+        const orp = resolveCircleAgainstWalls(orca.ox, orca.oy, ORCA_R, mazeWalls);
+        orca.ox = orp.x;
+        orca.oy = orp.y;
+        if (
+          bestD2 <= ORCA_SHOOT_RANGE_SQ &&
+          orca.shotCd <= 0 &&
+          olen > 6 &&
+          hasLineOfSight(orca.ox, orca.oy, best.pos.x, best.pos.y, mazeWalls)
+        ) {
+          const ux = odx / olen;
+          const uy = ody / olen;
+          shootWater(orca.ox + ux * 18, orca.oy + uy * 18, ux, uy);
+          orca.shotCd = WATER_SHOT_COOLDOWN;
+        }
+      } else {
+        const hdx = px - orca.ox;
+        const hdy = py - orca.oy;
+        const hlen = Math.hypot(hdx, hdy);
+        if (hlen > 2) {
+          orca.ox += (hdx / hlen) * ORCA_SPEED * 0.5 * d;
+          orca.oy += (hdy / hlen) * ORCA_SPEED * 0.5 * d;
+        }
+        const orp = resolveCircleAgainstWalls(orca.ox, orca.oy, ORCA_R, mazeWalls);
+        orca.ox = orp.x;
+        orca.oy = orp.y;
+      }
+      orca.body.pos.x = orca.ox;
+      orca.body.pos.y = orca.oy;
+      orca.tag.pos.x = orca.ox;
+      orca.tag.pos.y = orca.oy - 30;
+    }
+
+    for (let bi = bullets.length - 1; bi >= 0; bi--) {
+      const b = bullets[bi];
+      b.pos.x += b.vx * d;
+      b.pos.y += b.vy * d;
+      b.life -= d;
+
+      let hit = false;
+      for (let zi = zombies.length - 1; zi >= 0; zi--) {
+        const z = zombies[zi];
+        const zr = z.r;
+        if (dist2(b.pos.x, b.pos.y, z.pos.x, z.pos.y) < (BULLET_R + zr) * (BULLET_R + zr)) {
+          hit = true;
+          if (z.face) destroy(z.face);
+          destroy(z);
+          zombies.splice(zi, 1);
+          score += z.points;
+          scoreLabel.text = "Score: " + score;
+          break;
+        }
+      }
+
+      if (
+        hit ||
+        b.life <= 0 ||
+        b.pos.x < -20 ||
+        b.pos.x > W + 20 ||
+        b.pos.y < -20 ||
+        b.pos.y > H + 20 ||
+        circleHitsAnyWall(b.pos.x, b.pos.y, BULLET_R, mazeWalls)
+      ) {
+        destroy(b);
+        bullets.splice(bi, 1);
+      }
+    }
+
+    if (zombies.length === 0) {
+      advanceLevel();
+    }
+
+    medkitSpawnAcc += d;
+    if (medkits.length < MAX_MEDKITS_ON_FIELD && medkitSpawnAcc >= MEDKIT_SPAWN_INTERVAL) {
+      medkitSpawnAcc = 0;
+      spawnMedKit();
+    }
+
+    for (let mi = medkits.length - 1; mi >= 0; mi--) {
+      const kit = medkits[mi];
+      if (kit.mark) {
+        kit.mark.pos.x = kit.pos.x;
+        kit.mark.pos.y = kit.pos.y;
+      }
+      const pickR = PLAYER_R + MEDKIT_R + 6;
+      if (dist2(px, py, kit.pos.x, kit.pos.y) < pickR * pickR) {
+        hp = Math.min(MAX_HP, hp + MEDKIT_HEAL);
+        destroy(kit.mark);
+        destroy(kit);
+        medkits.splice(mi, 1);
+        refreshHud();
+      }
+    }
+
+    let hitByZombie = false;
+    for (let i = 0; i < zombies.length; i++) {
+      const zm = zombies[i];
+      const hitR = PLAYER_R + zm.r;
+      if (dist2(px, py, zm.pos.x, zm.pos.y) < hitR * hitR) {
+        hitByZombie = true;
+        break;
+      }
+    }
+    if (hitByZombie && invuln <= 0) {
+      hp -= DAMAGE_PER_HIT;
+      invuln = INVULN_TIME;
+      if (hp <= 0) {
+        lives -= 1;
+        if (lives <= 0) {
+          hp = 0;
+          gameOver = true;
+          showGameOverOverlay();
+        } else {
+          hp = MAX_HP;
+          invuln = INVULN_TIME + 0.6;
+        }
+      }
+      refreshHud();
+    }
+
+    syncStewart();
+  });
+
+  syncStewart();
+});
+
+go("game");
+</script>
+</body>
+</html>

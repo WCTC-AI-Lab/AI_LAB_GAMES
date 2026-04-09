@@ -61,5 +61,14 @@
     "thumbnail": "/games/mac-pan/thumbnail.png",
     "author": "AI Lab",
     "tags": ["solo", "arcade"]
+  },
+  {
+    "id": "stewart-maze",
+    "name": "Stewart's Maze",
+    "description": "Maze arenas with zombies, med kits, and an orca helper at low HP. Three mazes, aim with mouse, Space fires every 3s. Clear all zombies to advance.",
+    "path": "/games/stewart-maze/index.html",
+    "thumbnail": "/games/stewart-maze/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "maze", "arcade"]
   }
 ]
