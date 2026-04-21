@@ -1,5 +1,23 @@
 [
   {
+    "id": "flag-quiz",
+    "name": "Atlas Flag Quiz",
+    "description": "Guess every flag once to win (no repeats after a right answer). Answer choices grow 4→6→8→10 every 10 correct. Big world list.",
+    "path": "/games/flag-quiz/index.html",
+    "thumbnail": "/games/flag-quiz/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "starter"]
+  },
+  {
+    "id": "blank-game",
+    "name": "Blank Game",
+    "description": "Empty canvas — we add ideas one at a time.",
+    "path": "/games/blank-game/index.html",
+    "thumbnail": "/games/blank-game/thumbnail.png",
+    "author": "AI Lab",
+    "tags": ["solo", "starter"]
+  },
+  {
     "id": "tiger-mermaid-sea-escape",
     "name": "Tiger Mermaid Sea Escape",
     "description": "Deliver fish to your sandy lair, grab pearls to level up (bigger & faster), dodge hooks and outlast a shark—hide in the castle. Enter restarts.",
