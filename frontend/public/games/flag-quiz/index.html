@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flag Quiz</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(100, 116, 139, 0.15);
+  }
+</style>
+</head>
+<body>
+<script src="../_lib/kaplay.js"></script>
+<script>
+const W = 800;
+const H = 520;
+const FLAGCDN_BASE = "https://flagcdn.com/w160/";
+
+/* tier 1 = famous flags (early stages), 2 = broader, 3 = full atlas / trickier */
+const COUNTRIES = [
+  { code: "US", name: "United States", tier: 1 },
+  { code: "GB", name: "United Kingdom", tier: 1 },
+  { code: "FR", name: "France", tier: 1 },
+  { code: "DE", name: "Germany", tier: 1 },
+  { code: "IT", name: "Italy", tier: 1 },
+  { code: "ES", name: "Spain", tier: 1 },
+  { code: "CA", name: "Canada", tier: 1 },
+  { code: "AU", name: "Australia", tier: 1 },
+  { code: "BR", name: "Brazil", tier: 1 },
+  { code: "MX", name: "Mexico", tier: 1 },
+  { code: "JP", name: "Japan", tier: 1 },
+  { code: "CN", name: "China", tier: 1 },
+  { code: "IN", name: "India", tier: 1 },
+  { code: "RU", name: "Russia", tier: 1 },
+  { code: "KR", name: "South Korea", tier: 1 },
+  { code: "AR", name: "Argentina", tier: 1 },
+  { code: "ZA", name: "South Africa", tier: 1 },
+  { code: "EG", name: "Egypt", tier: 1 },
+  { code: "NG", name: "Nigeria", tier: 1 },
+  { code: "KE", name: "Kenya", tier: 1 },
+  { code: "ET", name: "Ethiopia", tier: 1 },
+  { code: "GH", name: "Ghana", tier: 1 },
+  { code: "MA", name: "Morocco", tier: 1 },
+  { code: "DZ", name: "Algeria", tier: 1 },
+  { code: "TR", name: "Turkey", tier: 1 },
+  { code: "SA", name: "Saudi Arabia", tier: 1 },
+  { code: "AE", name: "United Arab Emirates", tier: 1 },
+  { code: "IL", name: "Israel", tier: 1 },
+  { code: "NL", name: "Netherlands", tier: 1 },
+  { code: "SE", name: "Sweden", tier: 1 },
+  { code: "NO", name: "Norway", tier: 1 },
+  { code: "CH", name: "Switzerland", tier: 1 },
+  { code: "PT", name: "Portugal", tier: 1 },
+  { code: "GR", name: "Greece", tier: 1 },
+  { code: "NZ", name: "New Zealand", tier: 1 },
+  { code: "PL", name: "Poland", tier: 1 },
+  { code: "BE", name: "Belgium", tier: 1 },
+  { code: "AT", name: "Austria", tier: 1 },
+  { code: "IE", name: "Ireland", tier: 1 },
+  { code: "CO", name: "Colombia", tier: 1 },
+  { code: "CL", name: "Chile", tier: 1 },
+  { code: "PE", name: "Peru", tier: 1 },
+  { code: "VE", name: "Venezuela", tier: 1 },
+  { code: "CU", name: "Cuba", tier: 1 },
+  { code: "JM", name: "Jamaica", tier: 1 },
+  { code: "TH", name: "Thailand", tier: 1 },
+  { code: "VN", name: "Vietnam", tier: 1 },
+  { code: "PH", name: "Philippines", tier: 1 },
+  { code: "MY", name: "Malaysia", tier: 1 },
+  { code: "ID", name: "Indonesia", tier: 1 },
+  { code: "PK", name: "Pakistan", tier: 1 },
+  { code: "BD", name: "Bangladesh", tier: 1 },
+  { code: "IQ", name: "Iraq", tier: 1 },
+  { code: "IR", name: "Iran", tier: 1 },
+  { code: "UA", name: "Ukraine", tier: 2 },
+  { code: "CZ", name: "Czechia", tier: 2 },
+  { code: "HU", name: "Hungary", tier: 2 },
+  { code: "RO", name: "Romania", tier: 2 },
+  { code: "HR", name: "Croatia", tier: 2 },
+  { code: "RS", name: "Serbia", tier: 2 },
+  { code: "BG", name: "Bulgaria", tier: 2 },
+  { code: "SK", name: "Slovakia", tier: 2 },
+  { code: "SI", name: "Slovenia", tier: 2 },
+  { code: "BA", name: "Bosnia and Herzegovina", tier: 2 },
+  { code: "LT", name: "Lithuania", tier: 2 },
+  { code: "LV", name: "Latvia", tier: 2 },
+  { code: "EE", name: "Estonia", tier: 2 },
+  { code: "FI", name: "Finland", tier: 2 },
+  { code: "DK", name: "Denmark", tier: 2 },
+  { code: "IS", name: "Iceland", tier: 2 },
+  { code: "TN", name: "Tunisia", tier: 2 },
+  { code: "LY", name: "Libya", tier: 2 },
+  { code: "SD", name: "Sudan", tier: 2 },
+  { code: "SS", name: "South Sudan", tier: 2 },
+  { code: "SO", name: "Somalia", tier: 2 },
+  { code: "TZ", name: "Tanzania", tier: 2 },
+  { code: "UG", name: "Uganda", tier: 2 },
+  { code: "AO", name: "Angola", tier: 2 },
+  { code: "MZ", name: "Mozambique", tier: 2 },
+  { code: "CM", name: "Cameroon", tier: 2 },
+  { code: "CI", name: "Côte d'Ivoire", tier: 2 },
+  { code: "SN", name: "Senegal", tier: 2 },
+  { code: "ZW", name: "Zimbabwe", tier: 2 },
+  { code: "ZM", name: "Zambia", tier: 2 },
+  { code: "RW", name: "Rwanda", tier: 2 },
+  { code: "BF", name: "Burkina Faso", tier: 2 },
+  { code: "ML", name: "Mali", tier: 2 },
+  { code: "NE", name: "Niger", tier: 2 },
+  { code: "TD", name: "Chad", tier: 2 },
+  { code: "MG", name: "Madagascar", tier: 2 },
+  { code: "MW", name: "Malawi", tier: 2 },
+  { code: "NA", name: "Namibia", tier: 2 },
+  { code: "BW", name: "Botswana", tier: 2 },
+  { code: "GA", name: "Gabon", tier: 2 },
+  { code: "MR", name: "Mauritania", tier: 2 },
+  { code: "ER", name: "Eritrea", tier: 2 },
+  { code: "DJ", name: "Djibouti", tier: 2 },
+  { code: "CD", name: "DR Congo", tier: 2 },
+  { code: "CG", name: "Republic of the Congo", tier: 2 },
+  { code: "CF", name: "Central African Republic", tier: 2 },
+  { code: "BJ", name: "Benin", tier: 2 },
+  { code: "TG", name: "Togo", tier: 2 },
+  { code: "LR", name: "Liberia", tier: 2 },
+  { code: "SL", name: "Sierra Leone", tier: 2 },
+  { code: "GN", name: "Guinea", tier: 2 },
+  { code: "GW", name: "Guinea-Bissau", tier: 2 },
+  { code: "GM", name: "The Gambia", tier: 2 },
+  { code: "CV", name: "Cabo Verde", tier: 2 },
+  { code: "ST", name: "São Tomé and Príncipe", tier: 2 },
+  { code: "GQ", name: "Equatorial Guinea", tier: 2 },
+  { code: "BI", name: "Burundi", tier: 2 },
+  { code: "LS", name: "Lesotho", tier: 2 },
+  { code: "SZ", name: "Eswatini", tier: 2 },
+  { code: "MU", name: "Mauritius", tier: 2 },
+  { code: "SC", name: "Seychelles", tier: 2 },
+  { code: "KM", name: "Comoros", tier: 2 },
+  { code: "JO", name: "Jordan", tier: 2 },
+  { code: "LB", name: "Lebanon", tier: 2 },
+  { code: "YE", name: "Yemen", tier: 2 },
+  { code: "OM", name: "Oman", tier: 2 },
+  { code: "QA", name: "Qatar", tier: 2 },
+  { code: "KW", name: "Kuwait", tier: 2 },
+  { code: "BH", name: "Bahrain", tier: 2 },
+  { code: "SY", name: "Syria", tier: 2 },
+  { code: "PS", name: "Palestine", tier: 2 },
+  { code: "GE", name: "Georgia", tier: 2 },
+  { code: "AM", name: "Armenia", tier: 2 },
+  { code: "AZ", name: "Azerbaijan", tier: 2 },
+  { code: "KZ", name: "Kazakhstan", tier: 2 },
+  { code: "UZ", name: "Uzbekistan", tier: 2 },
+  { code: "TM", name: "Turkmenistan", tier: 2 },
+  { code: "KG", name: "Kyrgyzstan", tier: 2 },
+  { code: "TJ", name: "Tajikistan", tier: 2 },
+  { code: "MN", name: "Mongolia", tier: 2 },
+  { code: "NP", name: "Nepal", tier: 2 },
+  { code: "LK", name: "Sri Lanka", tier: 2 },
+  { code: "MM", name: "Myanmar", tier: 2 },
+  { code: "KH", name: "Cambodia", tier: 2 },
+  { code: "LA", name: "Laos", tier: 2 },
+  { code: "AF", name: "Afghanistan", tier: 2 },
+  { code: "BT", name: "Bhutan", tier: 2 },
+  { code: "MV", name: "Maldives", tier: 2 },
+  { code: "BN", name: "Brunei", tier: 2 },
+  { code: "TL", name: "Timor-Leste", tier: 2 },
+  { code: "FJ", name: "Fiji", tier: 2 },
+  { code: "PG", name: "Papua New Guinea", tier: 2 },
+  { code: "SB", name: "Solomon Islands", tier: 2 },
+  { code: "VU", name: "Vanuatu", tier: 2 },
+  { code: "WS", name: "Samoa", tier: 2 },
+  { code: "TO", name: "Tonga", tier: 2 },
+  { code: "KI", name: "Kiribati", tier: 2 },
+  { code: "EC", name: "Ecuador", tier: 2 },
+  { code: "BO", name: "Bolivia", tier: 2 },
+  { code: "PY", name: "Paraguay", tier: 2 },
+  { code: "UY", name: "Uruguay", tier: 2 },
+  { code: "GY", name: "Guyana", tier: 2 },
+  { code: "SR", name: "Suriname", tier: 2 },
+  { code: "PA", name: "Panama", tier: 2 },
+  { code: "CR", name: "Costa Rica", tier: 2 },
+  { code: "GT", name: "Guatemala", tier: 2 },
+  { code: "HN", name: "Honduras", tier: 2 },
+  { code: "SV", name: "El Salvador", tier: 2 },
+  { code: "NI", name: "Nicaragua", tier: 2 },
+  { code: "BZ", name: "Belize", tier: 2 },
+  { code: "DO", name: "Dominican Republic", tier: 2 },
+  { code: "HT", name: "Haiti", tier: 2 },
+  { code: "TT", name: "Trinidad and Tobago", tier: 2 },
+  { code: "BB", name: "Barbados", tier: 2 },
+  { code: "BS", name: "Bahamas", tier: 2 },
+  { code: "BY", name: "Belarus", tier: 2 },
+  { code: "MD", name: "Moldova", tier: 2 },
+  { code: "AL", name: "Albania", tier: 2 },
+  { code: "MK", name: "North Macedonia", tier: 2 },
+  { code: "ME", name: "Montenegro", tier: 2 },
+  { code: "XK", name: "Kosovo", tier: 2 },
+  { code: "CY", name: "Cyprus", tier: 3 },
+  { code: "MT", name: "Malta", tier: 3 },
+  { code: "LU", name: "Luxembourg", tier: 3 },
+  { code: "AD", name: "Andorra", tier: 3 },
+  { code: "MC", name: "Monaco", tier: 3 },
+  { code: "LI", name: "Liechtenstein", tier: 3 },
+  { code: "SM", name: "San Marino", tier: 3 },
+  { code: "VA", name: "Vatican City", tier: 3 },
+  { code: "NR", name: "Nauru", tier: 3 },
+  { code: "TV", name: "Tuvalu", tier: 3 },
+  { code: "PW", name: "Palau", tier: 3 },
+  { code: "FM", name: "Micronesia", tier: 3 },
+  { code: "MH", name: "Marshall Islands", tier: 3 },
+  { code: "AG", name: "Antigua and Barbuda", tier: 3 },
+  { code: "DM", name: "Dominica", tier: 3 },
+  { code: "GD", name: "Grenada", tier: 3 },
+  { code: "KN", name: "Saint Kitts and Nevis", tier: 3 },
+  { code: "LC", name: "Saint Lucia", tier: 3 },
+  { code: "VC", name: "Saint Vincent and the Grenadines", tier: 3 },
+];
+
+function flagEmoji(cc) {
+  const base = 0x1f1e6;
+  const u = cc.toUpperCase();
+  const a = base + (u.charCodeAt(0) - 65);
+  const b = base + (u.charCodeAt(1) - 65);
+  return String.fromCodePoint(a, b);
+}
+
+function flagImageUrl(cc) {
+  return FLAGCDN_BASE + cc.toLowerCase() + ".png";
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i];
+    a[i] = a[j];
+    a[j] = t;
+  }
+  return a;
+}
+
+function choiceCount(score) {
+  return Math.min(4 + 2 * Math.min(Math.floor(score / 10), 3), 10);
+}
+
+function computePlayState(solvedSet, score) {
+  var cap = Math.min(1 + Math.floor(score / 10), 3);
+  function remainingAt(c) {
+    return COUNTRIES.filter(function (x) {
+      return x.tier <= c && !solvedSet.has(x.code);
+    });
+  }
+  var rem = remainingAt(cap);
+  while (rem.length === 0 && cap < 3) {
+    cap++;
+    rem = remainingAt(cap);
+  }
+  return { remaining: rem, tierCap: cap };
+}
+
+kaplay({
+  width: W,
+  height: H,
+  background: [15, 23, 42],
+  crisp: true,
+});
+
+scene("game", () => {
+  let score = 0;
+  let roundLocked = false;
+  let cooldown = 0;
+  let hitTargets = [];
+  let lastCorrectName = "";
+  let roundAnswer = null;
+  const solvedCodes = new Set();
+  const flagSpriteLoaded = {};
+
+  let flagPic = null;
+  let fallbackEmoji = null;
+
+  const scoreLabel = add([
+    text("Right: 0", { size: 22 }),
+    pos(20, 16),
+    color(226, 232, 240),
+    z(10),
+  ]);
+
+  const choicesLabel = add([
+    text("4 choices", { size: 17 }),
+    pos(W - 16, 14),
+    anchor("topright"),
+    color(226, 232, 240),
+    z(10),
+  ]);
+
+  const progressLabel = add([
+    text("", { size: 13 }),
+    pos(W - 16, 36),
+    anchor("topright"),
+    color(148, 163, 184),
+    z(10),
+  ]);
+
+  function refreshHud() {
+    var st = computePlayState(solvedCodes, score);
+    scoreLabel.text = "Right: " + score;
+    choicesLabel.text = choiceCount(score) + " choices";
+    progressLabel.text = st.remaining.length + " flags to go";
+  }
+
+  add([
+    text("Guess the country!", { size: 26 }),
+    pos(W / 2, 44),
+    anchor("center"),
+    color(248, 250, 252),
+    z(10),
+  ]);
+
+  const flagStatusLabel = add([
+    text("", { size: 18 }),
+    pos(W / 2, 152),
+    anchor("center"),
+    color(148, 163, 184),
+    z(6),
+  ]);
+
+  const feedbackLabel = add([
+    text("", { size: 18 }),
+    pos(W / 2, 218),
+    anchor("center"),
+    color(250, 204, 21),
+    z(10),
+  ]);
+
+  add([
+    text(
+      "Clear every flag once to win. Keys 1–9 and 0 (0 = 10th). More choices every 10 right.",
+      { size: 11 }
+    ),
+    pos(W / 2, H - 14),
+    anchor("center"),
+    color(148, 163, 184),
+    opacity(0.9),
+    z(10),
+  ]);
+
+  const roundObjects = [];
+
+  function clearFlagDisplay() {
+    if (flagPic) {
+      flagPic.destroy();
+      flagPic = null;
+    }
+    if (fallbackEmoji) {
+      fallbackEmoji.destroy();
+      fallbackEmoji = null;
+    }
+    flagStatusLabel.text = "";
+  }
+
+  function clearRound() {
+    clearFlagDisplay();
+    while (roundObjects.length) {
+      roundObjects.pop().destroy();
+    }
+    hitTargets = [];
+  }
+
+  function spawnChoiceButtons(options, correct) {
+    var N = options.length;
+    var colGap = 10;
+    var rowGap = 5;
+    var marginSide = 32;
+    var gridTop = 244;
+    var bottomReserve = 40;
+    var btnW = (W - marginSide * 2 - colGap) / 2;
+    var rows = N / 2;
+    var btnH = Math.min(
+      34,
+      Math.floor((H - gridTop - bottomReserve) / rows - rowGap)
+    );
+    var fontSize = N > 6 ? 13 : N > 4 ? 15 : 16;
+
+    for (var i = 0; i < N; i++) {
+      var c = options[i];
+      var col = i % 2;
+      var row = Math.floor(i / 2);
+      var x = marginSide + col * (btnW + colGap) + btnW / 2;
+      var y = gridTop + row * (btnH + rowGap) + btnH / 2;
+      var isCorrect = c.code === correct.code;
+      var keyLabel = i === 9 ? "0" : String(i + 1);
+
+      var bg = add([
+        rect(btnW, btnH, { radius: 6 }),
+        pos(x, y),
+        anchor("center"),
+        color(30, 41, 59),
+        outline(2, rgb(71, 85, 105)),
+        z(2),
+      ]);
+      roundObjects.push(bg);
+
+      var lbl = add([
+        text(
+          keyLabel + ". " + c.name,
+          { size: fontSize, width: btnW - 14, align: "center" }
+        ),
+        pos(x, y),
+        anchor("center"),
+        color(226, 232, 240),
+        z(3),
+      ]);
+      roundObjects.push(lbl);
+
+      hitTargets.push({
+        x: x,
+        y: y,
+        w: btnW,
+        h: btnH,
+        correct: isCorrect,
+        name: c.name,
+      });
+    }
+  }
+
+  function finishRound(options, correct) {
+    spawnChoiceButtons(options, correct);
+    roundLocked = false;
+  }
+
+  function showFallbackFlag(correct) {
+    fallbackEmoji = add([
+      text(flagEmoji(correct.code), { size: 100 }),
+      pos(W / 2, 146),
+      anchor("center"),
+      z(5),
+    ]);
+  }
+
+  function startRound() {
+    clearRound();
+    roundLocked = true;
+    feedbackLabel.text = "";
+    refreshHud();
+
+    var st = computePlayState(solvedCodes, score);
+    if (st.remaining.length === 0) {
+      go("win", score);
+      return;
+    }
+
+    var num = choiceCount(score);
+    var correct = st.remaining[Math.floor(Math.random() * st.remaining.length)];
+    roundAnswer = correct;
+    lastCorrectName = correct.name;
+
+    var wrongNeed = num - 1;
+    var poolDistr = COUNTRIES.filter(function (c) {
+      return c.tier <= st.tierCap && c.code !== correct.code;
+    });
+    var wrongPick = shuffle(poolDistr).slice(0, wrongNeed);
+    if (wrongPick.length < wrongNeed) {
+      var extra = shuffle(
+        COUNTRIES.filter(function (c) {
+          if (c.code === correct.code) return false;
+          return !wrongPick.some(function (w) {
+            return w.code === c.code;
+          });
+        })
+      );
+      while (wrongPick.length < wrongNeed && extra.length) {
+        wrongPick.push(extra.pop());
+      }
+    }
+    var options = shuffle([correct].concat(wrongPick));
+
+    const cc = correct.code.toLowerCase();
+    const sprKey = "fcd_" + cc;
+    const url = flagImageUrl(correct.code);
+
+    flagStatusLabel.text = "Loading flag…";
+
+    function onFlagVisible() {
+      flagStatusLabel.text = "";
+      finishRound(options, correct);
+    }
+
+    function attachSprite() {
+      if (flagPic) {
+        flagPic.destroy();
+        flagPic = null;
+      }
+      flagPic = add([
+        sprite(sprKey),
+        pos(W / 2, 152),
+        anchor("center"),
+        scale(num > 6 ? 1.25 : 1.45),
+        z(5),
+      ]);
+    }
+
+    if (flagSpriteLoaded[sprKey]) {
+      attachSprite();
+      onFlagVisible();
+      return;
+    }
+
+    var loadResult = loadSprite(sprKey, url);
+    if (loadResult && typeof loadResult.then === "function") {
+      loadResult
+        .then(function () {
+          flagSpriteLoaded[sprKey] = true;
+          attachSprite();
+          onFlagVisible();
+        })
+        .catch(function () {
+          showFallbackFlag(correct);
+          onFlagVisible();
+        });
+    } else {
+      setTimeout(function () {
+        flagSpriteLoaded[sprKey] = true;
+        try {
+          attachSprite();
+        } catch (e) {
+          showFallbackFlag(correct);
+        }
+        onFlagVisible();
+      }, 120);
+    }
+  }
+
+  function pick(index) {
+    if (roundLocked || index < 0 || index >= hitTargets.length) return;
+    roundLocked = true;
+    const t = hitTargets[index];
+    if (t.correct) {
+      solvedCodes.add(roundAnswer.code);
+      score++;
+      scoreLabel.text = "Right: " + score;
+      refreshHud();
+      var next = computePlayState(solvedCodes, score);
+      if (next.remaining.length === 0) {
+        go("win", score);
+        return;
+      }
+      feedbackLabel.text = "Nice — correct!";
+      feedbackLabel.color = rgb(74, 222, 128);
+    } else {
+      feedbackLabel.text = "Not quite — it was " + lastCorrectName + ".";
+      feedbackLabel.color = rgb(248, 113, 113);
+    }
+    cooldown = 1.25;
+  }
+
+  function pointInHit(px, py, t) {
+    const hw = t.w / 2;
+    const hh = t.h / 2;
+    return px >= t.x - hw && px <= t.x + hw && py >= t.y - hh && py <= t.y + hh;
+  }
+
+  onMouseRelease("left", () => {
+    if (roundLocked) return;
+    const m = mousePos();
+    for (let i = 0; i < hitTargets.length; i++) {
+      if (pointInHit(m.x, m.y, hitTargets[i])) {
+        pick(i);
+        return;
+      }
+    }
+  });
+
+  onCharInput(function (ch) {
+    if (roundLocked) return;
+    var n = hitTargets.length;
+    if (n <= 0) return;
+    var map = {
+      "1": 0,
+      "2": 1,
+      "3": 2,
+      "4": 3,
+      "5": 4,
+      "6": 5,
+      "7": 6,
+      "8": 7,
+      "9": 8,
+      "0": 9,
+    };
+    var idx = map[ch];
+    if (idx !== undefined && idx < n) pick(idx);
+  });
+
+  onUpdate(() => {
+    if (cooldown > 0) {
+      cooldown -= dt();
+      if (cooldown <= 0) startRound();
+    }
+  });
+
+  refreshHud();
+  startRound();
+});
+
+scene("win", function (finalScore) {
+  add([
+    text("You won!", { size: 42 }),
+    pos(W / 2, H / 2 - 100),
+    anchor("center"),
+    color(74, 222, 128),
+    z(10),
+  ]);
+  add([
+    text("Every flag in the atlas — nice.", { size: 22 }),
+    pos(W / 2, H / 2 - 40),
+    anchor("center"),
+    color(226, 232, 240),
+    z(10),
+  ]);
+  add([
+    text("Got it right " + finalScore + " times.", { size: 20 }),
+    pos(W / 2, H / 2 + 10),
+    anchor("center"),
+    color(200, 200, 210),
+    z(10),
+  ]);
+  add([
+    text("Space or click to play again", { size: 18 }),
+    pos(W / 2, H / 2 + 70),
+    anchor("center"),
+    color(148, 163, 184),
+    z(10),
+  ]);
+  onKeyPress("space", function () {
+    go("game");
+  });
+  onClick(function () {
+    go("game");
+  });
+});
+
+go("game");
+</script>
+</body>
+</html>
